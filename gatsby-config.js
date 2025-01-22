@@ -103,9 +103,10 @@ module.exports = {
       resolve: `gatsby-plugin-mdx`,
       options: {
         extensions: [`.mdx`, `.md`],
-        // https://github.com/gatsbyjs/gatsby/issues/21866#issuecomment-1063668178
-        // Add katex support
-        remarkPlugins: [require("remark-math")],
+        remarkPlugins: [
+          require("remark-math"),
+          [require('remark-footnotes'), { inlineNotes: true }]
+        ],
         rehypePlugins: [[require("rehype-katex"), { strict: "ignore" }]],
         gatsbyRemarkPlugins: [
           {
