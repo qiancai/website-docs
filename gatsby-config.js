@@ -105,7 +105,13 @@ module.exports = {
         extensions: [`.mdx`, `.md`],
         remarkPlugins: [
           require("remark-math"),
-          [require('remark-footnotes'), { inlineNotes: true }]
+          [
+            require('remark-footnotes'), 
+            { 
+              inlineNotes: true,
+              footnotesPosition: 'inline'
+            }
+          ]
         ],
         rehypePlugins: [[require("rehype-katex"), { strict: "ignore" }]],
         gatsbyRemarkPlugins: [
