@@ -2,6 +2,12 @@ require("ts-node").register({ transpileOnly: true });
 
 const docs = require("./docs/docs.json");
 const isDevelopment = process.env.NODE_ENV === "development";
+const extraMarkdownPagesIgnore = (process.env.MARKDOWN_PAGES_IGNORE || "")
+  .split(",")
+  .map((pattern) => pattern.trim())
+  .filter(Boolean);
+const shouldIgnoreMarkdownPages =
+  isDevelopment || extraMarkdownPagesIgnore.length > 0;
 const markdownPagesIgnore = [
   "**/ja/**",
   "**/zh/**",
@@ -12,6 +18,7 @@ const markdownPagesIgnore = [
   "**/en/tidb/release-7.1/**",
   "**/en/tidb/release-7.5/**",
   "**/en/tidb/release-8.1/**",
+  ...extraMarkdownPagesIgnore,
 ];
 
 module.exports = {
@@ -94,6 +101,10 @@ module.exports = {
             getLanguageFromPath: false,
           },
           {
+            matchPath: "/:lang?/config-comparison/",
+            getLanguageFromPath: false,
+          },
+          {
             matchPath: `/:lang?/(${Object.keys(docs.docs).join(
               "|"
             )}|developer|best-practices|api|ai|releases)/(.*)`,
@@ -123,7 +134,7 @@ module.exports = {
       options: {
         name: `markdown-pages`,
         path: `${__dirname}/docs/markdown-pages`,
-        ...(isDevelopment ? { ignore: markdownPagesIgnore } : {}),
+        ...(shouldIgnoreMarkdownPages ? { ignore: markdownPagesIgnore } : {}),
       },
     },
     {

@@ -39,8 +39,10 @@
     "tidbSelfManagedReleases": "TiDB Self-Managed Releases",
     "tidbOperatorReleases": "TiDB Operator Releases",
     "tiupReleases": "TiUP Releases",
+    "configComparison": "Config Comparison",
     "badge": {
-      "preview": "Preview"
+      "preview": "Preview",
+      "new": "New"
     },
     "appdev": "App Dev",
     "asktug": "Forum",

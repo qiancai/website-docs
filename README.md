@@ -30,6 +30,13 @@ Run `pnpm start` to develop:
 pnpm start
 ```
 
+For standalone pages that do not depend on `docs/markdown-pages`, you can skip
+regular doc page creation to start local development faster:
+
+```sh
+SKIP_DOC_PAGES=1 MARKDOWN_PAGES_IGNORE="**/*" pnpm start
+```
+
 In order to debug algolia searches, you need to provide two additional environment variables:
 
 - `GATSBY_ALGOLIA_APPLICATION_ID`

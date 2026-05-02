@@ -6,6 +6,7 @@ const {
   createDocHome,
   createCloudAPIReference,
   createDocSearch,
+  createConfigComparison,
   create404,
 } = require("./gatsby/create-pages");
 const { createFrontmatter, createNavs } = require("./gatsby/create-types");
@@ -14,12 +15,15 @@ const {
 } = require("./gatsby/plugin/conditional-toc/conditional-toc");
 
 exports.createPages = async ({ graphql, actions }) => {
-  await createDocHome({ graphql, actions });
-  await createDocs({ graphql, actions });
+  if (process.env.SKIP_DOC_PAGES !== "1") {
+    await createDocHome({ graphql, actions });
+    await createDocs({ graphql, actions });
+  }
 
   if (process.env.WEBSITE_BUILD_TYPE !== "archive") {
     await createCloudAPIReference({ graphql, actions });
     await createDocSearch({ actions });
+    await createConfigComparison({ actions });
   }
 
   create404({ actions });

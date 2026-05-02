@@ -39,8 +39,10 @@
     "tidbSelfManagedReleases": "TiDB Self-Managed リリース",
     "tidbOperatorReleases": "TiDB Operator リリース",
     "tiupReleases": "TiUP リリース",
+    "configComparison": "Config Comparison",
     "badge": {
-      "preview": "Preview"
+      "preview": "Preview",
+      "new": "New"
     },
     "appdev": "アプリ開発",
     "asktug": "Forum",

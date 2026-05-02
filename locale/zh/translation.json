@@ -37,8 +37,10 @@
     "tidbSelfManagedReleases": "TiDB 版本发布记录",
     "tidbOperatorReleases": "TiDB Operator 版本发布记录",
     "tiupReleases": "TiUP 版本发布记录",
+    "configComparison": "配置对比",
     "badge": {
-      "preview": "Preview"
+      "preview": "Preview",
+      "new": "New"
     },
     "appdev": "开发指南",
     "asktug": "社区",

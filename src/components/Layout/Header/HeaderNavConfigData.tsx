@@ -8,24 +8,30 @@ import { useTheme } from "@mui/material/styles";
 import TiDBCloudIcon from "media/icons/cloud-03.svg";
 import TiDBIcon from "media/icons/layers-three-01.svg";
 
-const PreviewBadge = (props: { label: string }) => {
+const PreviewBadge = (props: {
+  label: string;
+  tone?: "neutral" | "success";
+}) => {
   const theme = useTheme();
+  const isSuccess = props.tone === "success";
   return (
     <Chip
       label={props.label}
       size="small"
-      variant="outlined"
+      variant={isSuccess ? "filled" : "outlined"}
       sx={{
         height: "20px",
         fontSize: "12px",
         fontWeight: 400,
         borderRadius: "10px",
+        backgroundColor: isSuccess ? "#e8f6ee" : undefined,
+        borderColor: isSuccess ? "transparent" : undefined,
         pointerEvents: "none",
         "& .MuiChip-label": {
           paddingLeft: "8px",
           paddingRight: "8px",
           lineHeight: "20px",
-          color: theme.palette.carbon[700],
+          color: isSuccess ? "#0f8f4d" : theme.palette.carbon[700],
         },
       }}
     />
@@ -187,6 +193,13 @@ const getDefaultNavConfig = (
         endIcon: <OpenInNewIcon sx={{ fontSize: "14px", marginLeft: "4px" }} />,
       },
     ],
+  },
+  {
+    type: "item",
+    label: t("navbar.configComparison"),
+    endIcon: <PreviewBadge label={t("navbar.badge.new")} tone="success" />,
+    to: "/config-comparison",
+    selected: (namespace) => namespace === TOCNamespace.ConfigComparison,
   },
 ];
 

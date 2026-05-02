@@ -112,6 +112,7 @@
     "serve": "gatsby serve",
     "clean": "gatsby clean",
     "test": "jest --coverage --roots gatsby",
+    "generate:config-comparison-data": "node scripts/generate-config-comparison-data.mjs",
     "prepare": "is-ci || husky install"
   },
   "lint-staged": {

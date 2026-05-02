@@ -24,6 +24,7 @@ export enum TOCNamespace {
   TiDBReleases = "tidb-releases",
   TidbCloudReleases = "tidb-cloud-releases",
   TiDBInKubernetesReleases = "tidb-in-kubernetes-releases",
+  ConfigComparison = "config-comparison",
 }
 
 export const TOCNamespaceSlugMap: Record<TOCNamespace, string> = {
@@ -41,6 +42,7 @@ export const TOCNamespaceSlugMap: Record<TOCNamespace, string> = {
   [TOCNamespace.TiDBReleases]: "tidb-releases",
   [TOCNamespace.TidbCloudReleases]: "tidb-cloud-releases",
   [TOCNamespace.TiDBInKubernetesReleases]: "tidb-operator-releases",
+  [TOCNamespace.ConfigComparison]: "config-comparison",
 };
 
 export enum Repo {
