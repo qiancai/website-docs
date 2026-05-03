@@ -58,6 +58,7 @@ typings/
 # gatsby files
 .cache/
 public
+static/data/config-comparison/dataset.json
 
 # Mac files
 .DS_Store

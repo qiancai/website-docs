@@ -29,13 +29,17 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import SearchIcon from "@mui/icons-material/Search";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import { useI18next } from "gatsby-plugin-react-i18next";
 
-type ContentTypeId =
-  | "system_variables"
-  | "tidb_config"
-  | "tikv_config"
-  | "tiflash_config"
-  | "pd_config";
+const CONTENT_TYPE_IDS = [
+  "system_variables",
+  "tidb_config",
+  "tikv_config",
+  "tiflash_config",
+  "pd_config",
+] as const;
+
+type ContentTypeId = typeof CONTENT_TYPE_IDS[number];
 
 type Status = "new" | "removed" | "modified" | "unchanged";
 type FilterStatus = Status | "deprecated" | "all";
@@ -71,25 +75,6 @@ interface ComponentConfigRow {
   Value?: unknown;
 }
 
-interface MetadataRow {
-  content_type: ContentTypeId;
-  component: string;
-  item_key: string;
-  display_name?: string | null;
-  description?: string | null;
-  value_type?: string | null;
-  variable_scope?: string | null;
-  docs_url?: string | null;
-  new_since?: string | null;
-  deprecated_since?: string | null;
-  deprecated_since_versions?: string[];
-  removed_since?: string | null;
-  replacement?: string | null;
-  persists_to_cluster?: string | null;
-  applies_to_set_var?: string | null;
-  source?: string | null;
-}
-
 interface ReleaseEvent {
   version: string;
   content_type: ContentTypeId;
@@ -110,8 +95,7 @@ interface Dataset {
     string,
     Record<ContentTypeId, SystemVariableRow[] | ComponentConfigRow[]>
   >;
-  metadata: MetadataRow[];
-  releaseEvents?: ReleaseEvent[];
+  releaseEvents: ReleaseEvent[];
 }
 
 interface CollapsedConfigRow {
@@ -132,26 +116,37 @@ interface ComparisonRow {
   to_value?: unknown;
   field_changes: Record<string, { from: unknown; to: unknown }>;
   is_deprecated: boolean;
-  new_since?: string | null;
   deprecated_since?: string | null;
   deprecated_since_versions: string[];
   removed_since?: string | null;
   replacement?: string | null;
-  persists_to_cluster?: string | null;
-  applies_to_set_var?: string | null;
-  description?: string | null;
   change_note?: string | null;
   change_note_type?: string | null;
   change_note_version?: string | null;
   change_note_url?: string | null;
   change_note_events?: ReleaseEvent[];
-  docs_url?: string | null;
   source: string;
   scope?: string | null;
   instances?: Record<string, unknown>;
 }
 
+interface ComparisonSummary {
+  total: number;
+  new: number;
+  removed: number;
+  modified: number;
+  unchanged: number;
+  deprecated: number;
+}
+
+interface ComparisonResult {
+  rows: ComparisonRow[];
+  summary: ComparisonSummary;
+  label: string;
+}
+
 const DATASET_URL = "/data/config-comparison/dataset.json";
+const DATASET_REQUEST_TIMEOUT_MS = 15_000;
 
 const STATUS_ORDER: FilterStatus[] = [
   "all",
@@ -161,15 +156,6 @@ const STATUS_ORDER: FilterStatus[] = [
   "deprecated",
   "unchanged",
 ];
-
-const STATUS_LABEL: Record<FilterStatus, string> = {
-  all: "All",
-  new: "New",
-  removed: "Removed",
-  modified: "Modified",
-  deprecated: "Deprecated",
-  unchanged: "Unchanged",
-};
 
 const STATUS_TONE: Record<FilterStatus, { fg: string; bg: string }> = {
   all: { fg: "#1f2430", bg: "#eef3ff" },
@@ -189,6 +175,133 @@ const SYSTEM_COMPARE_FIELDS = [
   "IS_NOOP",
 ] as const;
 
+function createEmptySummary(): ComparisonSummary {
+  return {
+    total: 0,
+    new: 0,
+    removed: 0,
+    modified: 0,
+    unchanged: 0,
+    deprecated: 0,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isContentTypeId(value: unknown): value is ContentTypeId {
+  return (
+    typeof value === "string" &&
+    CONTENT_TYPE_IDS.includes(value as ContentTypeId)
+  );
+}
+
+function validateDataset(payload: unknown): Dataset {
+  if (!isRecord(payload)) {
+    throw new Error("The config comparison dataset must be an object.");
+  }
+
+  if (!Array.isArray(payload.versions) || payload.versions.length === 0) {
+    throw new Error("The config comparison dataset has no versions.");
+  }
+  if (
+    !Array.isArray(payload.contentTypes) ||
+    payload.contentTypes.length === 0
+  ) {
+    throw new Error("The config comparison dataset has no content types.");
+  }
+  if (!isRecord(payload.captures)) {
+    throw new Error("The config comparison dataset has no capture rows.");
+  }
+
+  const versions = payload.versions as VersionInfo[];
+  for (const version of versions) {
+    if (!isRecord(version) || typeof version.version !== "string") {
+      throw new Error("Each config comparison version must define a version.");
+    }
+  }
+
+  const contentTypes = payload.contentTypes as ContentTypeInfo[];
+  for (const contentType of contentTypes) {
+    if (
+      !isRecord(contentType) ||
+      !isContentTypeId(contentType.id) ||
+      typeof contentType.label !== "string" ||
+      typeof contentType.component !== "string"
+    ) {
+      throw new Error(
+        "The config comparison dataset has an invalid content type."
+      );
+    }
+  }
+
+  for (const version of versions) {
+    const capture = payload.captures[version.version];
+    if (!isRecord(capture)) {
+      throw new Error(`Missing capture rows for ${version.version}.`);
+    }
+    for (const contentType of contentTypes) {
+      if (!Array.isArray(capture[contentType.id])) {
+        throw new Error(
+          `Missing ${contentType.id} rows for ${version.version}.`
+        );
+      }
+    }
+  }
+
+  const releaseEvents = payload.releaseEvents;
+  if (releaseEvents !== undefined && !Array.isArray(releaseEvents)) {
+    throw new Error(
+      "The config comparison releaseEvents field must be an array."
+    );
+  }
+  for (const event of (releaseEvents || []) as unknown[]) {
+    if (
+      !isRecord(event) ||
+      !isContentTypeId(event.content_type) ||
+      typeof event.version !== "string" ||
+      typeof event.component !== "string" ||
+      typeof event.item_key !== "string" ||
+      !["modified", "removed", "deprecated"].includes(
+        event.event_type as string
+      )
+    ) {
+      throw new Error(
+        "The config comparison dataset has an invalid release event."
+      );
+    }
+  }
+
+  return {
+    ...(payload as Dataset),
+    releaseEvents: (releaseEvents || []) as ReleaseEvent[],
+  };
+}
+
+async function fetchDataset() {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    DATASET_REQUEST_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(DATASET_URL, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to load ${DATASET_URL}`);
+    }
+    return validateDataset(await response.json());
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`Timed out loading ${DATASET_URL}`);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 function normalizeValue(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
@@ -196,21 +309,35 @@ function normalizeValue(value: unknown): string | null {
   if (typeof value === "string") {
     return value;
   }
-  return JSON.stringify(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
-function displayValue(value: unknown): string {
+function displayValue(value: unknown, seen = new WeakSet<object>()): string {
+  if (typeof value === "object" && value !== null) {
+    if (seen.has(value)) {
+      return "[Circular]";
+    }
+    seen.add(value);
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 0) {
+      const text = entries
+        .map(
+          ([instance, instanceValue]) =>
+            `${instance}=${displayValue(instanceValue, seen)}`
+        )
+        .join("\n");
+      seen.delete(value);
+      return text;
+    }
+    seen.delete(value);
+  }
   const normalized = normalizeValue(value);
   if (normalized === null || normalized === "") {
     return "-";
-  }
-  if (typeof value === "object" && value !== null) {
-    return Object.entries(value as Record<string, unknown>)
-      .map(
-        ([instance, instanceValue]) =>
-          `${instance}=${displayValue(instanceValue)}`
-      )
-      .join("\n");
   }
   return normalized;
 }
@@ -294,22 +421,14 @@ function inferValueType(
   return values.length > 0 ? "string" : null;
 }
 
-function metadataKey(contentType: ContentTypeId, itemKey: string) {
+function itemMapKey(contentType: ContentTypeId, itemKey: string) {
   return `${contentType}\u0000${itemKey}`;
-}
-
-function buildMetadataMap(dataset: Dataset) {
-  const map = new Map<string, MetadataRow>();
-  for (const item of dataset.metadata) {
-    map.set(metadataKey(item.content_type, item.item_key), item);
-  }
-  return map;
 }
 
 function buildReleaseEventMap(dataset: Dataset) {
   const map = new Map<string, ReleaseEvent[]>();
   for (const event of dataset.releaseEvents || []) {
-    const key = metadataKey(event.content_type, event.item_key);
+    const key = itemMapKey(event.content_type, event.item_key);
     map.set(key, [...(map.get(key) || []), event]);
   }
   for (const events of map.values()) {
@@ -470,20 +589,22 @@ function statusFor(
 
 function compare(
   dataset: Dataset,
+  releaseEventsByItem: Map<string, ReleaseEvent[]>,
   fromVersion: string,
   toVersion: string,
   contentType: ContentTypeId
-) {
-  const spec = dataset.contentTypes.find((item) => item.id === contentType)!;
+): ComparisonResult {
+  const spec = dataset.contentTypes.find((item) => item.id === contentType);
+  if (!spec) {
+    return { rows: [], summary: createEmptySummary(), label: "" };
+  }
   const fromRows = loadRows(dataset, fromVersion, contentType);
   const toRows = loadRows(dataset, toVersion, contentType);
-  const metadata = buildMetadataMap(dataset);
-  const releaseEvents = buildReleaseEventMap(dataset);
   const keys = Array.from(
     new Set([...fromRows.keys(), ...toRows.keys()])
   ).sort();
   const rows: ComparisonRow[] = [];
-  const summary = {
+  const summary: ComparisonSummary = {
     total: keys.length,
     new: 0,
     removed: 0,
@@ -496,9 +617,8 @@ function compare(
     const fromRow = fromRows.get(itemKey);
     const toRow = toRows.get(itemKey);
     const effectiveRow = toRow || fromRow;
-    const meta = metadata.get(metadataKey(contentType, itemKey));
     const itemReleaseEvents =
-      releaseEvents.get(metadataKey(contentType, itemKey)) || [];
+      releaseEventsByItem.get(itemMapKey(contentType, itemKey)) || [];
     const intervalReleaseEvents = releaseEventsInRange(
       itemReleaseEvents,
       fromVersion,
@@ -547,35 +667,27 @@ function compare(
         content_type: contentType,
         component: spec.component,
         item_key: itemKey,
-        display_name: meta?.display_name || itemKey,
-        value_type:
-          meta?.value_type ||
-          inferValueType(
-            fromValue,
-            toValue,
-            effectiveVariable?.POSSIBLE_VALUES
-          ),
+        display_name: itemKey,
+        value_type: inferValueType(
+          fromValue,
+          toValue,
+          effectiveVariable?.POSSIBLE_VALUES
+        ),
         from_value: fromValue,
         to_value: toValue,
         field_changes: changes,
         is_deprecated: isDeprecated,
-        new_since: meta?.new_since,
         deprecated_since: isDeprecated ? activeDeprecatedSince : null,
         deprecated_since_versions: deprecatedSinceVersions,
         removed_since: activeRemovedSince,
-        replacement: firstIntervalEvent?.replacement || meta?.replacement,
-        persists_to_cluster: meta?.persists_to_cluster,
-        applies_to_set_var: meta?.applies_to_set_var,
-        description: meta?.description,
+        replacement: firstIntervalEvent?.replacement || null,
         change_note: changeNote,
         change_note_type: firstIntervalEvent?.event_type,
         change_note_version: firstIntervalEvent?.version,
         change_note_url: firstIntervalEvent?.release_note_url,
         change_note_events: intervalReleaseEvents,
-        docs_url: meta?.docs_url,
-        source: meta?.source || "variables_info",
-        scope:
-          meta?.variable_scope || effectiveVariable?.VARIABLE_SCOPE || null,
+        source: "variables_info",
+        scope: effectiveVariable?.VARIABLE_SCOPE || null,
       });
     } else {
       const fromConfig = fromRow as CollapsedConfigRow | undefined;
@@ -586,29 +698,22 @@ function compare(
         content_type: contentType,
         component: spec.component,
         item_key: itemKey,
-        display_name: meta?.display_name || itemKey,
-        value_type:
-          meta?.value_type ||
-          inferValueType(fromConfig?.Value, toConfig?.Value),
+        display_name: itemKey,
+        value_type: inferValueType(fromConfig?.Value, toConfig?.Value),
         from_value: fromConfig?.Value,
         to_value: toConfig?.Value,
         field_changes: changes,
         is_deprecated: isDeprecated,
-        new_since: meta?.new_since,
         deprecated_since: isDeprecated ? activeDeprecatedSince : null,
         deprecated_since_versions: deprecatedSinceVersions,
         removed_since: activeRemovedSince,
-        replacement: firstIntervalEvent?.replacement || meta?.replacement,
-        persists_to_cluster: meta?.persists_to_cluster,
-        applies_to_set_var: meta?.applies_to_set_var,
-        description: meta?.description,
+        replacement: firstIntervalEvent?.replacement || null,
         change_note: changeNote,
         change_note_type: firstIntervalEvent?.event_type,
         change_note_version: firstIntervalEvent?.version,
         change_note_url: firstIntervalEvent?.release_note_url,
         change_note_events: intervalReleaseEvents,
-        docs_url: meta?.docs_url,
-        source: meta?.source || "show_config",
+        source: "show_config",
         scope: null,
         instances: effectiveConfig?._instances,
       });
@@ -626,7 +731,6 @@ function matchesSearch(row: ComparisonRow, search: string) {
   return [
     row.item_key,
     row.display_name,
-    row.description,
     row.change_note,
     displayValue(row.from_value),
     displayValue(row.to_value),
@@ -683,13 +787,12 @@ function downloadCsv(rows: ComparisonRow[], filename: string) {
     "from_value",
     "to_value",
     "is_deprecated",
-    "new_since",
     "deprecated_since",
     "replacement",
     "change_note",
     "change_note_version",
-    "description",
-    "docs_url",
+    "change_note_url",
+    "source",
   ];
   const csv = [
     headers.join(","),
@@ -701,7 +804,7 @@ function downloadCsv(rows: ComparisonRow[], filename: string) {
         .join(",")
     ),
   ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -711,10 +814,11 @@ function downloadCsv(rows: ComparisonRow[], filename: string) {
 }
 
 function StatusChip(props: { status: FilterStatus; count?: number }) {
+  const { t } = useI18next();
   const tone = STATUS_TONE[props.status];
   return (
     <Chip
-      label={`${STATUS_LABEL[props.status]}${
+      label={`${t(`configComparison.status.${props.status}`)}${
         props.count === undefined ? "" : ` ${props.count}`
       }`}
       size="small"
@@ -735,6 +839,7 @@ function SummaryMetric(props: {
   active: boolean;
   onClick: (status: FilterStatus) => void;
 }) {
+  const { t } = useI18next();
   const tone = STATUS_TONE[props.status];
   return (
     <ButtonBase
@@ -766,7 +871,7 @@ function SummaryMetric(props: {
           fontWeight: 700,
         }}
       >
-        {STATUS_LABEL[props.status]}
+        {t(`configComparison.status.${props.status}`)}
       </Typography>
       <Stack
         direction="row"
@@ -793,14 +898,7 @@ function SummaryMetric(props: {
 }
 
 function SummaryPanel(props: {
-  summary: {
-    total: number;
-    new: number;
-    removed: number;
-    modified: number;
-    deprecated: number;
-    unchanged: number;
-  };
+  summary: ComparisonSummary;
   suffix: string;
   activeStatus: FilterStatus;
   onStatusChange: (status: FilterStatus) => void;
@@ -869,6 +967,7 @@ function SelectFilter(props: {
   optionLabel?: (value: string) => string;
   minWidth?: number;
 }) {
+  const { t } = useI18next();
   return (
     <FormControl
       size="small"
@@ -885,7 +984,9 @@ function SelectFilter(props: {
           height: "44px",
         }}
       >
-        <MenuItem value="all">{props.label}: All</MenuItem>
+        <MenuItem value="all">
+          {props.label}: {t("configComparison.status.all")}
+        </MenuItem>
         {props.options.map((option) => (
           <MenuItem key={option} value={option}>
             {props.label}: {props.optionLabel?.(option) || option}
@@ -902,17 +1003,26 @@ function ConfigComparisonTable(props: {
   toVersion: string;
   contentType: ContentTypeId;
 }) {
+  const { t } = useI18next();
   if (props.rows.length === 0) {
     return (
       <Box sx={{ padding: "36px", textAlign: "center", color: "#687083" }}>
-        No matching items
+        {t("configComparison.noMatchingItems")}
       </Box>
     );
   }
 
   return (
-    <TableContainer sx={{ border: "1px solid #e4e8f0", borderRadius: "8px" }}>
-      <Table size="small" sx={{ minWidth: 1420 }}>
+    <TableContainer
+      sx={{
+        background:
+          "linear-gradient(to left, rgba(31, 36, 48, 0.12), rgba(31, 36, 48, 0)) right center / 28px 100% no-repeat",
+        border: "1px solid #e4e8f0",
+        borderRadius: "8px",
+        overflowX: "auto",
+      }}
+    >
+      <Table size="small" sx={{ minWidth: 1180 }}>
         <TableHead>
           <TableRow
             sx={{
@@ -925,17 +1035,19 @@ function ConfigComparisonTable(props: {
               },
             }}
           >
-            <TableCell>Status</TableCell>
-            <TableCell>Item</TableCell>
-            <TableCell>Scope</TableCell>
-            <TableCell>Type</TableCell>
-            <TableCell>Default ({props.fromVersion})</TableCell>
-            <TableCell>Default ({props.toVersion})</TableCell>
-            <TableCell>Persists to cluster</TableCell>
-            <TableCell>Applies to SET_VAR</TableCell>
-            <TableCell>Deprecated</TableCell>
-            <TableCell>Change note</TableCell>
-            <TableCell>Source</TableCell>
+            <TableCell>{t("configComparison.table.status")}</TableCell>
+            <TableCell>{t("configComparison.table.item")}</TableCell>
+            <TableCell>{t("configComparison.table.scope")}</TableCell>
+            <TableCell>{t("configComparison.table.type")}</TableCell>
+            <TableCell>
+              {t("configComparison.table.default")} ({props.fromVersion})
+            </TableCell>
+            <TableCell>
+              {t("configComparison.table.default")} ({props.toVersion})
+            </TableCell>
+            <TableCell>{t("configComparison.table.deprecated")}</TableCell>
+            <TableCell>{t("configComparison.table.changeNote")}</TableCell>
+            <TableCell>{t("configComparison.table.source")}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -986,18 +1098,12 @@ function ConfigComparisonTable(props: {
               >
                 {displayValue(row.to_value)}
               </TableCell>
-              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
-                {row.persists_to_cluster || "-"}
-              </TableCell>
-              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
-                {row.applies_to_set_var || "-"}
-              </TableCell>
               <TableCell>
                 {row.is_deprecated ? (
                   <StatusChip status="deprecated" count={undefined} />
                 ) : (
                   <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>
-                    No
+                    {t("configComparison.table.no")}
                   </Typography>
                 )}
                 {row.deprecated_since && (
@@ -1044,34 +1150,8 @@ function ConfigComparisonTable(props: {
                   </Typography>
                 )}
               </TableCell>
-              <TableCell>
-                {row.docs_url ? (
-                  <Tooltip title="Open docs">
-                    <Button
-                      component="a"
-                      href={row.docs_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="small"
-                      endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
-                      aria-label={`Open docs for ${row.item_key}`}
-                      sx={{
-                        color: "#2f5bff",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        minWidth: 0,
-                        padding: 0,
-                        textTransform: "none",
-                      }}
-                    >
-                      Docs
-                    </Button>
-                  </Tooltip>
-                ) : (
-                  <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>
-                    -
-                  </Typography>
-                )}
+              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
+                {row.source}
               </TableCell>
             </TableRow>
           ))}
@@ -1082,49 +1162,78 @@ function ConfigComparisonTable(props: {
 }
 
 export default function ConfigComparison() {
+  const { t } = useI18next();
   const [dataset, setDataset] = React.useState<Dataset | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [fromVersion, setFromVersion] = React.useState("v8.1.2");
-  const [toVersion, setToVersion] = React.useState("v8.5.6");
+  const [loadAttempt, setLoadAttempt] = React.useState(0);
+  const [fromVersion, setFromVersion] = React.useState("");
+  const [toVersion, setToVersion] = React.useState("");
   const [contentType, setContentType] =
     React.useState<ContentTypeId>("system_variables");
   const [filterStatus, setFilterStatus] = React.useState<FilterStatus>("all");
   const [scopeFilter, setScopeFilter] = React.useState<FieldFilter>("all");
   const [typeFilter, setTypeFilter] = React.useState<FieldFilter>("all");
-  const [persistsFilter, setPersistsFilter] =
-    React.useState<FieldFilter>("all");
-  const [setVarFilter, setSetVarFilter] = React.useState<FieldFilter>("all");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
   React.useEffect(() => {
-    fetch(DATASET_URL)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load ${DATASET_URL}`);
-        }
-        return response.json();
-      })
-      .then((payload: Dataset) => {
-        setDataset(payload);
-        const versions = payload.versions.map((version) => version.version);
-        if (!versions.includes(fromVersion)) {
-          setFromVersion(versions[0]);
-        }
-        if (!versions.includes(toVersion)) {
-          setToVersion(versions[versions.length - 1]);
+    let isMounted = true;
+
+    setError(null);
+    fetchDataset()
+      .then((payload) => {
+        if (isMounted) {
+          setDataset(payload);
         }
       })
-      .catch((reason: Error) => setError(reason.message));
-  }, []);
+      .catch((reason: unknown) => {
+        if (isMounted) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadAttempt]);
+
+  React.useEffect(() => {
+    if (!dataset) {
+      return;
+    }
+
+    const versions = dataset.versions.map((version) => version.version);
+    setFromVersion((current) =>
+      versions.includes(current) ? current : versions[0]
+    );
+    setToVersion((current) =>
+      versions.includes(current) ? current : versions[versions.length - 1]
+    );
+    setContentType((current) =>
+      dataset.contentTypes.some((item) => item.id === current)
+        ? current
+        : dataset.contentTypes[0].id
+    );
+  }, [dataset]);
+
+  const releaseEventsByItem = React.useMemo(
+    () => (dataset ? buildReleaseEventMap(dataset) : null),
+    [dataset]
+  );
 
   const comparison = React.useMemo(() => {
-    if (!dataset) {
+    if (!dataset || !releaseEventsByItem || !fromVersion || !toVersion) {
       return null;
     }
-    return compare(dataset, fromVersion, toVersion, contentType);
-  }, [dataset, fromVersion, toVersion, contentType]);
+    return compare(
+      dataset,
+      releaseEventsByItem,
+      fromVersion,
+      toVersion,
+      contentType
+    );
+  }, [dataset, releaseEventsByItem, fromVersion, toVersion, contentType]);
 
   const filteredRows = React.useMemo(() => {
     if (!comparison) {
@@ -1135,19 +1244,9 @@ export default function ConfigComparison() {
         matchesFilter(row, filterStatus) &&
         matchesFieldFilter(row.scope, scopeFilter) &&
         matchesFieldFilter(row.value_type, typeFilter) &&
-        matchesFieldFilter(row.persists_to_cluster, persistsFilter) &&
-        matchesFieldFilter(row.applies_to_set_var, setVarFilter) &&
         matchesSearch(row, search)
     );
-  }, [
-    comparison,
-    filterStatus,
-    persistsFilter,
-    scopeFilter,
-    search,
-    setVarFilter,
-    typeFilter,
-  ]);
+  }, [comparison, filterStatus, scopeFilter, search, typeFilter]);
 
   const scopeOptions = React.useMemo(
     () =>
@@ -1161,21 +1260,6 @@ export default function ConfigComparison() {
         : [],
     [comparison]
   );
-  const persistsOptions = React.useMemo(
-    () =>
-      comparison
-        ? uniqueFilterValues(comparison.rows, (row) => row.persists_to_cluster)
-        : [],
-    [comparison]
-  );
-  const setVarOptions = React.useMemo(
-    () =>
-      comparison
-        ? uniqueFilterValues(comparison.rows, (row) => row.applies_to_set_var)
-        : [],
-    [comparison]
-  );
-
   const visibleRows = filteredRows.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
@@ -1190,8 +1274,6 @@ export default function ConfigComparison() {
     filterStatus,
     scopeFilter,
     typeFilter,
-    persistsFilter,
-    setVarFilter,
     search,
     rowsPerPage,
   ]);
@@ -1200,14 +1282,27 @@ export default function ConfigComparison() {
     setFilterStatus("all");
     setScopeFilter("all");
     setTypeFilter("all");
-    setPersistsFilter("all");
-    setSetVarFilter("all");
   }, [fromVersion, toVersion, contentType]);
 
   if (error) {
     return (
       <Paper sx={{ padding: 3, borderRadius: "8px", color: "#d62b2b" }}>
-        {error}
+        <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
+          {t("configComparison.loadFailed")}
+        </Typography>
+        <Typography sx={{ color: "#596174", marginBottom: 2 }}>
+          {error}
+        </Typography>
+        <Button
+          variant="outlined"
+          onClick={() => {
+            setDataset(null);
+            setLoadAttempt((current) => current + 1);
+          }}
+          sx={{ textTransform: "none" }}
+        >
+          {t("configComparison.retry")}
+        </Button>
       </Paper>
     );
   }
@@ -1227,11 +1322,13 @@ export default function ConfigComparison() {
       version.release_date ? ` (${version.release_date})` : ""
     }`;
   const summarySuffix =
-    contentType === "system_variables" ? "variables" : "items";
+    contentType === "system_variables"
+      ? t("configComparison.suffix.variables")
+      : t("configComparison.suffix.items");
   const searchPlaceholder =
     contentType === "system_variables"
-      ? "Search by variable name, value, or change note..."
-      : "Search by config name, value, or change note...";
+      ? t("configComparison.searchVariablePlaceholder")
+      : t("configComparison.searchConfigPlaceholder");
   const handleStatusChange = (status: FilterStatus) => {
     setFilterStatus(status);
     setPage(0);
@@ -1255,11 +1352,10 @@ export default function ConfigComparison() {
               lineHeight: 1.1,
             }}
           >
-            Config Comparison
+            {t("configComparison.title")}
           </Typography>
           <Typography sx={{ marginTop: 1, color: "#687083", fontSize: "16px" }}>
-            Compare TiDB system variables and component configuration across
-            selected versions.
+            {t("configComparison.description")}
           </Typography>
         </Box>
       </Stack>
@@ -1276,7 +1372,7 @@ export default function ConfigComparison() {
         <Grid container spacing={3} alignItems="center">
           <Grid item xs={12} md={5}>
             <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
-              Select Versions
+              {t("configComparison.selectVersions")}
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               <Box sx={{ flex: 1 }}>
@@ -1287,7 +1383,7 @@ export default function ConfigComparison() {
                     marginBottom: "6px",
                   }}
                 >
-                  From
+                  {t("configComparison.from")}
                 </Typography>
                 <FormControl fullWidth size="small">
                   <Select
@@ -1303,9 +1399,9 @@ export default function ConfigComparison() {
                   </Select>
                 </FormControl>
               </Box>
-              <Tooltip title="Swap versions">
+              <Tooltip title={t("configComparison.swapVersions")}>
                 <IconButton
-                  aria-label="Swap versions"
+                  aria-label={t("configComparison.swapVersions")}
                   onClick={() => {
                     setFromVersion(toVersion);
                     setToVersion(fromVersion);
@@ -1322,7 +1418,7 @@ export default function ConfigComparison() {
                     marginBottom: "6px",
                   }}
                 >
-                  To
+                  {t("configComparison.to")}
                 </Typography>
                 <FormControl fullWidth size="small">
                   <Select
@@ -1350,7 +1446,7 @@ export default function ConfigComparison() {
             }}
           >
             <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
-              Select Content
+              {t("configComparison.selectContent")}
             </Typography>
             <ToggleButtonGroup
               exclusive
@@ -1390,11 +1486,7 @@ export default function ConfigComparison() {
       >
         <InfoOutlinedIcon sx={{ color: "#8a94a6", fontSize: 18 }} />
         <Typography sx={{ fontSize: "14px" }}>
-          Status is calculated from newly deployed TiDB clusters. Change notes
-          come from release notes.{" "}
-          <Box component="span" sx={{ color: "#2f5bff", fontWeight: 700 }}>
-            Learn more about data sources and limitations.
-          </Box>
+          {t("configComparison.info")}
         </Typography>
       </Stack>
 
@@ -1426,40 +1518,28 @@ export default function ConfigComparison() {
           }}
         />
         <SelectFilter
-          label="Status"
+          label={t("configComparison.filters.status")}
           value={filterStatus}
           options={STATUS_ORDER.filter((status) => status !== "all")}
           onChange={(value) => setFilterStatus(value as FilterStatus)}
-          optionLabel={(value) => STATUS_LABEL[value as FilterStatus]}
+          optionLabel={(value) =>
+            t(`configComparison.status.${value as FilterStatus}`)
+          }
           minWidth={146}
         />
         <SelectFilter
-          label="Scope"
+          label={t("configComparison.filters.scope")}
           value={scopeFilter}
           options={scopeOptions}
           onChange={setScopeFilter}
           minWidth={146}
         />
         <SelectFilter
-          label="Type"
+          label={t("configComparison.filters.type")}
           value={typeFilter}
           options={typeOptions}
           onChange={setTypeFilter}
           minWidth={132}
-        />
-        <SelectFilter
-          label="Persists to cluster"
-          value={persistsFilter}
-          options={persistsOptions}
-          onChange={setPersistsFilter}
-          minWidth={210}
-        />
-        <SelectFilter
-          label="Applies to SET_VAR"
-          value={setVarFilter}
-          options={setVarOptions}
-          onChange={setSetVarFilter}
-          minWidth={220}
         />
         <Button
           variant="outlined"
@@ -1480,7 +1560,7 @@ export default function ConfigComparison() {
             whiteSpace: "nowrap",
           }}
         >
-          Export Results
+          {t("configComparison.exportResults")}
         </Button>
       </Stack>
 
@@ -1495,7 +1575,12 @@ export default function ConfigComparison() {
         count={filteredRows.length}
         page={page}
         labelDisplayedRows={({ from, to, count }) =>
-          `Showing ${from} to ${to} of ${count.toLocaleString()} ${summarySuffix}`
+          t("configComparison.pagination", {
+            count: count.toLocaleString(),
+            from,
+            suffix: summarySuffix,
+            to,
+          })
         }
         onPageChange={(_, nextPage) => setPage(nextPage)}
         rowsPerPage={rowsPerPage}

@@ -51,7 +51,29 @@ const contentTypes = [
 ];
 
 function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Failed to read JSON from ${filePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+function assertArray(value, label) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array.`);
+  }
+  return value;
+}
+
+function assertObject(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  return value;
 }
 
 function pickSystemVariable(row) {
@@ -76,37 +98,8 @@ function pickConfig(row) {
   };
 }
 
-function pickMetadata(row) {
-  const metadata = row.metadata || {};
-  return {
-    content_type: row.content_type,
-    component: row.component,
-    item_key: row.item_key,
-    display_name: row.display_name,
-    description: row.description,
-    value_type: row.value_type,
-    variable_scope: row.variable_scope,
-    docs_url: row.docs_url,
-    new_since: row.new_since,
-    deprecated_since: row.deprecated_since,
-    deprecated_since_versions: metadata.deprecated_since_versions || [],
-    removed_since: row.removed_since,
-    replacement: row.replacement,
-    persists_to_cluster: row.persists_to_cluster,
-    applies_to_set_var: row.applies_to_set_var,
-    source: row.source,
-  };
-}
-
 const scope = readJson(path.join(dataRepo, "mvp-versions.json"));
-const metadataPath = path.join(
-  dataRepo,
-  "metadata",
-  "config-item-metadata.json"
-);
-const metadataPayload = fs.existsSync(metadataPath)
-  ? readJson(metadataPath)
-  : { items: [] };
+assertArray(scope.versions, "mvp-versions.json versions");
 const releaseEventsPath = path.join(
   dataRepo,
   "metadata",
@@ -115,14 +108,20 @@ const releaseEventsPath = path.join(
 const releaseEventsPayload = fs.existsSync(releaseEventsPath)
   ? readJson(releaseEventsPath)
   : { events: [] };
+assertObject(releaseEventsPayload, "release-note-events.json");
+assertArray(releaseEventsPayload.events, "release-note-events.json events");
 
 const captures = {};
 for (const version of scope.versions) {
+  if (!version || typeof version.version !== "string") {
+    throw new Error("Each scoped version must define a string version.");
+  }
   const versionRows = {};
   for (const contentType of contentTypes) {
     const rows = readJson(
       path.join(dataRepo, version.version, contentType.path)
     );
+    assertArray(rows, `${version.version}/${contentType.path}`);
     versionRows[contentType.id] =
       contentType.id === "system_variables"
         ? rows.map(pickSystemVariable)
@@ -144,19 +143,17 @@ const dataset = {
   })),
   contentTypes,
   captures,
-  metadata: metadataPayload.items.map(pickMetadata),
   releaseEvents: releaseEventsPayload.events || [],
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-fs.writeFileSync(outputPath, `${JSON.stringify(dataset)}\n`);
+fs.writeFileSync(outputPath, `${JSON.stringify(dataset, null, 2)}\n`);
 console.log(
   JSON.stringify(
     {
       output: outputPath,
       versions: dataset.versions.length,
       contentTypes: dataset.contentTypes.length,
-      metadata: dataset.metadata.length,
       releaseEvents: dataset.releaseEvents.length,
       bytes: fs.statSync(outputPath).size,
     },

@@ -55,6 +55,51 @@
     "googleSearch": "Google Search",
     "bingSearch": "Bing Search"
   },
+  "configComparison": {
+    "title": "Config Comparison",
+    "description": "Compare TiDB system variables and component configuration across selected versions.",
+    "selectVersions": "Select Versions",
+    "from": "From",
+    "to": "To",
+    "swapVersions": "Swap versions",
+    "selectContent": "Select Content",
+    "info": "Status is calculated from newly deployed TiDB clusters. Change notes come from release notes.",
+    "exportResults": "Export Results",
+    "noMatchingItems": "No matching items",
+    "retry": "Retry",
+    "loadFailed": "Failed to load config comparison data.",
+    "searchVariablePlaceholder": "Search by variable name, value, or change note...",
+    "searchConfigPlaceholder": "Search by config name, value, or change note...",
+    "filters": {
+      "status": "Status",
+      "scope": "Scope",
+      "type": "Type"
+    },
+    "status": {
+      "all": "All",
+      "new": "New",
+      "removed": "Removed",
+      "modified": "Modified",
+      "deprecated": "Deprecated",
+      "unchanged": "Unchanged"
+    },
+    "table": {
+      "status": "Status",
+      "item": "Item",
+      "scope": "Scope",
+      "type": "Type",
+      "default": "Default",
+      "deprecated": "Deprecated",
+      "changeNote": "Change note",
+      "source": "Source",
+      "no": "No"
+    },
+    "suffix": {
+      "variables": "variables",
+      "items": "items"
+    },
+    "pagination": "Showing {{from}} to {{to}} of {{count}} {{suffix}}"
+  },
   "footer": {
     "privacy": "Privacy Policy",
     "legal": "Legal"

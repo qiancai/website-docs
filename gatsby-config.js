@@ -6,8 +6,7 @@ const extraMarkdownPagesIgnore = (process.env.MARKDOWN_PAGES_IGNORE || "")
   .split(",")
   .map((pattern) => pattern.trim())
   .filter(Boolean);
-const shouldIgnoreMarkdownPages =
-  isDevelopment || extraMarkdownPagesIgnore.length > 0;
+const shouldApplyMarkdownPagesIgnore = isDevelopment;
 const markdownPagesIgnore = [
   "**/ja/**",
   "**/zh/**",
@@ -134,7 +133,9 @@ module.exports = {
       options: {
         name: `markdown-pages`,
         path: `${__dirname}/docs/markdown-pages`,
-        ...(shouldIgnoreMarkdownPages ? { ignore: markdownPagesIgnore } : {}),
+        ...(shouldApplyMarkdownPagesIgnore
+          ? { ignore: markdownPagesIgnore }
+          : {}),
       },
     },
     {

@@ -39,10 +39,10 @@
     "tidbSelfManagedReleases": "TiDB Self-Managed リリース",
     "tidbOperatorReleases": "TiDB Operator リリース",
     "tiupReleases": "TiUP リリース",
-    "configComparison": "Config Comparison",
+    "configComparison": "構成比較",
     "badge": {
       "preview": "Preview",
-      "new": "New"
+      "new": "新規"
     },
     "appdev": "アプリ開発",
     "asktug": "Forum",
@@ -51,6 +51,51 @@
     "searchDocs": "ドキュメントを検索",
     "playground": "Playground",
     "learningCenter": "Learning Center"
+  },
+  "configComparison": {
+    "title": "構成比較",
+    "description": "選択した TiDB バージョン間でシステム変数とコンポーネント構成を比較します。",
+    "selectVersions": "バージョンを選択",
+    "from": "比較元",
+    "to": "比較先",
+    "swapVersions": "バージョンを入れ替え",
+    "selectContent": "内容を選択",
+    "info": "ステータスは新規にデプロイした TiDB クラスターの収集データから計算され、変更メモはリリースノートから取得されます。",
+    "exportResults": "結果をエクスポート",
+    "noMatchingItems": "一致する項目はありません",
+    "retry": "再試行",
+    "loadFailed": "構成比較データを読み込めませんでした。",
+    "searchVariablePlaceholder": "変数名、値、変更メモで検索...",
+    "searchConfigPlaceholder": "構成名、値、変更メモで検索...",
+    "filters": {
+      "status": "ステータス",
+      "scope": "スコープ",
+      "type": "タイプ"
+    },
+    "status": {
+      "all": "すべて",
+      "new": "新規",
+      "removed": "削除済み",
+      "modified": "変更済み",
+      "deprecated": "非推奨",
+      "unchanged": "変更なし"
+    },
+    "table": {
+      "status": "ステータス",
+      "item": "項目",
+      "scope": "スコープ",
+      "type": "タイプ",
+      "default": "デフォルト",
+      "deprecated": "非推奨",
+      "changeNote": "変更メモ",
+      "source": "ソース",
+      "no": "いいえ"
+    },
+    "suffix": {
+      "variables": "個の変数",
+      "items": "個の項目"
+    },
+    "pagination": "{{count}} {{suffix}}中 {{from}} から {{to}} を表示"
   },
   "footer": {
     "privacy": "Privacy Policy",

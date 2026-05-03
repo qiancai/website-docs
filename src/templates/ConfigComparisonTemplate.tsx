@@ -23,7 +23,7 @@ interface ConfigComparisonTemplateProps {
 export default function ConfigComparisonTemplate({
   pageContext: { buildType, feature },
 }: ConfigComparisonTemplateProps) {
-  const { language } = useI18next();
+  const { language, t } = useI18next();
 
   return (
     <Layout
@@ -33,8 +33,8 @@ export default function ConfigComparisonTemplate({
     >
       <Seo
         lang={language as Locale}
-        title="Config Comparison"
-        description="Compare TiDB system variables and component configuration between versions."
+        title={t("configComparison.title")}
+        description={t("configComparison.description")}
       />
       <ConfigComparison />
       <Box

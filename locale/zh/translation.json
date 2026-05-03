@@ -40,7 +40,7 @@
     "configComparison": "配置对比",
     "badge": {
       "preview": "Preview",
-      "new": "New"
+      "new": "新增"
     },
     "appdev": "开发指南",
     "asktug": "社区",
@@ -52,6 +52,51 @@
     "onsiteSearch": "站内搜索",
     "googleSearch": "Google 搜索",
     "bingSearch": "Bing 搜索"
+  },
+  "configComparison": {
+    "title": "配置对比",
+    "description": "对比不同 TiDB 版本中的系统变量和组件配置。",
+    "selectVersions": "选择版本",
+    "from": "源版本",
+    "to": "目标版本",
+    "swapVersions": "交换版本",
+    "selectContent": "选择内容",
+    "info": "状态根据新部署的 TiDB 集群采集数据计算，变更说明来自 release notes。",
+    "exportResults": "导出结果",
+    "noMatchingItems": "无匹配项",
+    "retry": "重试",
+    "loadFailed": "加载配置对比数据失败。",
+    "searchVariablePlaceholder": "按变量名、值或变更说明搜索...",
+    "searchConfigPlaceholder": "按配置项名、值或变更说明搜索...",
+    "filters": {
+      "status": "状态",
+      "scope": "作用域",
+      "type": "类型"
+    },
+    "status": {
+      "all": "全部",
+      "new": "新增",
+      "removed": "已移除",
+      "modified": "已修改",
+      "deprecated": "已废弃",
+      "unchanged": "未变化"
+    },
+    "table": {
+      "status": "状态",
+      "item": "配置项",
+      "scope": "作用域",
+      "type": "类型",
+      "default": "默认值",
+      "deprecated": "废弃状态",
+      "changeNote": "变更说明",
+      "source": "来源",
+      "no": "否"
+    },
+    "suffix": {
+      "variables": "个变量",
+      "items": "个配置项"
+    },
+    "pagination": "显示第 {{from}} 到 {{to}} 条，共 {{count}} {{suffix}}"
   },
   "footer": {
     "privacy": "隐私政策",
@@ -92,7 +137,7 @@
       "tidb": "你正在查看 TiDB 数据库的归档文档，归档文档不再提供任何更新。如无特殊需求，建议使用 TiDB 数据库的<0>最新 LTS 版本</0>。"
     },
     "playgroundDesc": "One-stop & interactive experience of TiDB's capabilities WITHOUT registration.",
-    "new": "New"
+    "new": "新增"
   },
   "shortcodes": {
     "note": "注意",

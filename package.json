@@ -106,8 +106,11 @@
   "license": "MIT",
   "scripts": {
     "dev": "pnpm start",
+    "prestart": "pnpm generate:config-comparison-data",
     "start": "mkdir -p .cache && gatsby develop",
+    "prestart:0.0.0.0": "pnpm generate:config-comparison-data",
     "start:0.0.0.0": "mkdir -p .cache && gatsby develop --host 0.0.0.0",
+    "prebuild": "pnpm generate:config-comparison-data",
     "build": "gatsby build",
     "serve": "gatsby serve",
     "clean": "gatsby clean",
