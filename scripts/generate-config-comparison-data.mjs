@@ -107,6 +107,14 @@ const metadataPath = path.join(
 const metadataPayload = fs.existsSync(metadataPath)
   ? readJson(metadataPath)
   : { items: [] };
+const releaseEventsPath = path.join(
+  dataRepo,
+  "metadata",
+  "release-note-events.json"
+);
+const releaseEventsPayload = fs.existsSync(releaseEventsPath)
+  ? readJson(releaseEventsPath)
+  : { events: [] };
 
 const captures = {};
 for (const version of scope.versions) {
@@ -137,6 +145,7 @@ const dataset = {
   contentTypes,
   captures,
   metadata: metadataPayload.items.map(pickMetadata),
+  releaseEvents: releaseEventsPayload.events || [],
 };
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -148,6 +157,7 @@ console.log(
       versions: dataset.versions.length,
       contentTypes: dataset.contentTypes.length,
       metadata: dataset.metadata.length,
+      releaseEvents: dataset.releaseEvents.length,
       bytes: fs.statSync(outputPath).size,
     },
     null,

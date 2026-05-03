@@ -1,6 +1,7 @@
 import * as React from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import FormControl from "@mui/material/FormControl";
@@ -23,8 +24,8 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useTheme } from "@mui/material/styles";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import SearchIcon from "@mui/icons-material/Search";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
@@ -38,6 +39,7 @@ type ContentTypeId =
 
 type Status = "new" | "removed" | "modified" | "unchanged";
 type FilterStatus = Status | "deprecated" | "all";
+type FieldFilter = string;
 
 interface VersionInfo {
   version: string;
@@ -88,6 +90,18 @@ interface MetadataRow {
   source?: string | null;
 }
 
+interface ReleaseEvent {
+  version: string;
+  content_type: ContentTypeId;
+  component: string;
+  item_key: string;
+  event_type: "modified" | "removed" | "deprecated";
+  change_type?: string | null;
+  change_note?: string | null;
+  replacement?: string | null;
+  release_note_url?: string | null;
+}
+
 interface Dataset {
   generatedAt: string;
   versions: VersionInfo[];
@@ -97,6 +111,7 @@ interface Dataset {
     Record<ContentTypeId, SystemVariableRow[] | ComponentConfigRow[]>
   >;
   metadata: MetadataRow[];
+  releaseEvents?: ReleaseEvent[];
 }
 
 interface CollapsedConfigRow {
@@ -125,6 +140,11 @@ interface ComparisonRow {
   persists_to_cluster?: string | null;
   applies_to_set_var?: string | null;
   description?: string | null;
+  change_note?: string | null;
+  change_note_type?: string | null;
+  change_note_version?: string | null;
+  change_note_url?: string | null;
+  change_note_events?: ReleaseEvent[];
   docs_url?: string | null;
   source: string;
   scope?: string | null;
@@ -152,11 +172,11 @@ const STATUS_LABEL: Record<FilterStatus, string> = {
 };
 
 const STATUS_TONE: Record<FilterStatus, { fg: string; bg: string }> = {
-  all: { fg: "#2f5bff", bg: "#eef3ff" },
+  all: { fg: "#1f2430", bg: "#eef3ff" },
   new: { fg: "#0f8f4d", bg: "#e8f6ee" },
-  removed: { fg: "#d62b2b", bg: "#fff0f0" },
-  modified: { fg: "#d45a00", bg: "#fff4e8" },
-  deprecated: { fg: "#7b2fd6", bg: "#f5ecff" },
+  removed: { fg: "#ff2d2d", bg: "#fff0f0" },
+  modified: { fg: "#ff5a1f", bg: "#fff1e8" },
+  deprecated: { fg: "#8a35d8", bg: "#f5ecff" },
   unchanged: { fg: "#596174", bg: "#f2f4f8" },
 };
 
@@ -208,41 +228,21 @@ function versionTuple(
   return [Number(match[1]), Number(match[2]), Number(match[3] || 0)];
 }
 
-function versionGte(version: string, other?: string | null): boolean {
-  const left = versionTuple(version);
-  const right = versionTuple(other);
-  if (!left || !right) {
-    return false;
-  }
-  return (
-    left[0] > right[0] ||
-    (left[0] === right[0] &&
-      (left[1] > right[1] || (left[1] === right[1] && left[2] >= right[2])))
-  );
-}
-
-function versionSameMinorGte(version: string, other: string): boolean {
-  const left = versionTuple(version);
-  const right = versionTuple(other);
-  if (!left || !right || left[0] !== right[0] || left[1] !== right[1]) {
-    return false;
-  }
-  return left[2] >= right[2];
-}
-
-function activeLifecycleSince(
-  version: string,
-  singleSince?: string | null,
-  branchSinceVersions: string[] = []
+function versionCompare(
+  leftVersion?: string | null,
+  rightVersion?: string | null
 ) {
-  if (branchSinceVersions.length > 0) {
-    return (
-      branchSinceVersions.find((since) =>
-        versionSameMinorGte(version, since)
-      ) || null
-    );
+  const left = versionTuple(leftVersion);
+  const right = versionTuple(rightVersion);
+  if (!left || !right) {
+    return 0;
   }
-  return singleSince && versionGte(version, singleSince) ? singleSince : null;
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) {
+      return left[index] - right[index];
+    }
+  }
+  return 0;
 }
 
 function inferValueType(
@@ -304,6 +304,90 @@ function buildMetadataMap(dataset: Dataset) {
     map.set(metadataKey(item.content_type, item.item_key), item);
   }
   return map;
+}
+
+function buildReleaseEventMap(dataset: Dataset) {
+  const map = new Map<string, ReleaseEvent[]>();
+  for (const event of dataset.releaseEvents || []) {
+    const key = metadataKey(event.content_type, event.item_key);
+    map.set(key, [...(map.get(key) || []), event]);
+  }
+  for (const events of map.values()) {
+    events.sort((left, right) => versionCompare(left.version, right.version));
+  }
+  return map;
+}
+
+function eventAppliesToTarget(
+  eventVersion: string | null | undefined,
+  targetVersion: string
+) {
+  const event = versionTuple(eventVersion);
+  const target = versionTuple(targetVersion);
+  if (!event || !target || versionCompare(eventVersion, targetVersion) > 0) {
+    return false;
+  }
+  if (event[0] === target[0] && event[1] === target[1]) {
+    return true;
+  }
+  return event[2] === 0;
+}
+
+function eventInCompareRange(
+  eventVersion: string | null | undefined,
+  fromVersion: string,
+  toVersion: string
+) {
+  const event = versionTuple(eventVersion);
+  const from = versionTuple(fromVersion);
+  const to = versionTuple(toVersion);
+  if (!event || !from || !to || versionCompare(fromVersion, toVersion) === 0) {
+    return false;
+  }
+  const low =
+    versionCompare(fromVersion, toVersion) < 0 ? fromVersion : toVersion;
+  const high = low === fromVersion ? toVersion : fromVersion;
+  return (
+    versionCompare(eventVersion, low) > 0 &&
+    versionCompare(eventVersion, high) <= 0
+  );
+}
+
+function activeReleaseEventSince(
+  events: ReleaseEvent[],
+  toVersion: string,
+  eventType: ReleaseEvent["event_type"]
+) {
+  return (
+    events.find(
+      (event) =>
+        event.event_type === eventType &&
+        eventAppliesToTarget(event.version, toVersion)
+    )?.version || null
+  );
+}
+
+function releaseEventsInRange(
+  events: ReleaseEvent[],
+  fromVersion: string,
+  toVersion: string
+) {
+  return events.filter((event) =>
+    eventInCompareRange(event.version, fromVersion, toVersion)
+  );
+}
+
+function changeNoteFromEvents(events: ReleaseEvent[]) {
+  if (events.length === 0) {
+    return null;
+  }
+  if (events.length === 1) {
+    return events[0].change_note || null;
+  }
+  return events
+    .filter((event) => event.change_note)
+    .map((event) => `${event.version}: ${event.change_note}`)
+    .join("\n");
 }
 
 function collapseConfigRows(rows: ComponentConfigRow[]) {
@@ -394,6 +478,7 @@ function compare(
   const fromRows = loadRows(dataset, fromVersion, contentType);
   const toRows = loadRows(dataset, toVersion, contentType);
   const metadata = buildMetadataMap(dataset);
+  const releaseEvents = buildReleaseEventMap(dataset);
   const keys = Array.from(
     new Set([...fromRows.keys(), ...toRows.keys()])
   ).sort();
@@ -412,19 +497,39 @@ function compare(
     const toRow = toRows.get(itemKey);
     const effectiveRow = toRow || fromRow;
     const meta = metadata.get(metadataKey(contentType, itemKey));
+    const itemReleaseEvents =
+      releaseEvents.get(metadataKey(contentType, itemKey)) || [];
+    const intervalReleaseEvents = releaseEventsInRange(
+      itemReleaseEvents,
+      fromVersion,
+      toVersion
+    );
     const compareFields =
       contentType === "system_variables"
         ? SYSTEM_COMPARE_FIELDS
         : (["Value"] as const);
     const changes = fieldChanges(fromRow, toRow, compareFields);
     const status = statusFor(fromRow, toRow, changes);
-    const deprecatedSinceVersions = meta?.deprecated_since_versions || [];
-    const activeDeprecatedSince = activeLifecycleSince(
+    const deprecatedSinceVersions = Array.from(
+      new Set(
+        itemReleaseEvents
+          .filter((event) => event.event_type === "deprecated")
+          .map((event) => event.version)
+      )
+    ).sort(versionCompare);
+    const activeDeprecatedSince = activeReleaseEventSince(
+      itemReleaseEvents,
       toVersion,
-      meta?.deprecated_since,
-      deprecatedSinceVersions
+      "deprecated"
     );
-    const isDeprecated = !!activeDeprecatedSince;
+    const activeRemovedSince = activeReleaseEventSince(
+      itemReleaseEvents,
+      toVersion,
+      "removed"
+    );
+    const firstIntervalEvent = intervalReleaseEvents[0];
+    const changeNote = changeNoteFromEvents(intervalReleaseEvents);
+    const isDeprecated = !!activeDeprecatedSince && !!toRow;
 
     summary[status] += 1;
     if (isDeprecated) {
@@ -455,13 +560,18 @@ function compare(
         field_changes: changes,
         is_deprecated: isDeprecated,
         new_since: meta?.new_since,
-        deprecated_since: activeDeprecatedSince || meta?.deprecated_since,
+        deprecated_since: isDeprecated ? activeDeprecatedSince : null,
         deprecated_since_versions: deprecatedSinceVersions,
-        removed_since: meta?.removed_since,
-        replacement: meta?.replacement,
+        removed_since: activeRemovedSince,
+        replacement: firstIntervalEvent?.replacement || meta?.replacement,
         persists_to_cluster: meta?.persists_to_cluster,
         applies_to_set_var: meta?.applies_to_set_var,
         description: meta?.description,
+        change_note: changeNote,
+        change_note_type: firstIntervalEvent?.event_type,
+        change_note_version: firstIntervalEvent?.version,
+        change_note_url: firstIntervalEvent?.release_note_url,
+        change_note_events: intervalReleaseEvents,
         docs_url: meta?.docs_url,
         source: meta?.source || "variables_info",
         scope:
@@ -485,13 +595,18 @@ function compare(
         field_changes: changes,
         is_deprecated: isDeprecated,
         new_since: meta?.new_since,
-        deprecated_since: activeDeprecatedSince || meta?.deprecated_since,
+        deprecated_since: isDeprecated ? activeDeprecatedSince : null,
         deprecated_since_versions: deprecatedSinceVersions,
-        removed_since: meta?.removed_since,
-        replacement: meta?.replacement,
+        removed_since: activeRemovedSince,
+        replacement: firstIntervalEvent?.replacement || meta?.replacement,
         persists_to_cluster: meta?.persists_to_cluster,
         applies_to_set_var: meta?.applies_to_set_var,
         description: meta?.description,
+        change_note: changeNote,
+        change_note_type: firstIntervalEvent?.event_type,
+        change_note_version: firstIntervalEvent?.version,
+        change_note_url: firstIntervalEvent?.release_note_url,
+        change_note_events: intervalReleaseEvents,
         docs_url: meta?.docs_url,
         source: meta?.source || "show_config",
         scope: null,
@@ -512,6 +627,7 @@ function matchesSearch(row: ComparisonRow, search: string) {
     row.item_key,
     row.display_name,
     row.description,
+    row.change_note,
     displayValue(row.from_value),
     displayValue(row.to_value),
   ]
@@ -528,6 +644,29 @@ function matchesFilter(row: ComparisonRow, status: FilterStatus) {
     return row.is_deprecated;
   }
   return row.status === status;
+}
+
+function normalizeFilterValue(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized || "-";
+}
+
+function matchesFieldFilter(
+  value: string | null | undefined,
+  filter: FieldFilter
+) {
+  return filter === "all" || normalizeFilterValue(value) === filter;
+}
+
+function uniqueFilterValues(
+  rows: ComparisonRow[],
+  getValue: (row: ComparisonRow) => string | null | undefined
+) {
+  return Array.from(
+    new Set(rows.map((row) => normalizeFilterValue(getValue(row))))
+  )
+    .filter((value) => value !== "-")
+    .sort((a, b) => a.localeCompare(b));
 }
 
 function csvEscape(value: unknown) {
@@ -547,6 +686,8 @@ function downloadCsv(rows: ComparisonRow[], filename: string) {
     "new_since",
     "deprecated_since",
     "replacement",
+    "change_note",
+    "change_note_version",
     "description",
     "docs_url",
   ];
@@ -587,33 +728,59 @@ function StatusChip(props: { status: FilterStatus; count?: number }) {
   );
 }
 
-function SummaryTile(props: {
+function SummaryMetric(props: {
   status: FilterStatus;
   value: number;
   suffix: string;
+  active: boolean;
+  onClick: (status: FilterStatus) => void;
 }) {
   const tone = STATUS_TONE[props.status];
   return (
-    <Box
+    <ButtonBase
+      onClick={() => props.onClick(props.status)}
       sx={{
-        border: "1px solid #e4e8f0",
-        borderRadius: "8px",
-        minHeight: "84px",
-        padding: "14px 16px",
-        background: "#fff",
+        alignItems: "center",
+        backgroundColor: props.active ? "#f8fbff" : "#fff",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+        minHeight: "112px",
+        padding: "18px 16px",
+        textAlign: "center",
+        transition: "background-color 120ms ease, box-shadow 120ms ease",
+        width: "100%",
+        "&:hover": {
+          backgroundColor: "#f8fbff",
+        },
+        "&:focus-visible": {
+          boxShadow: "inset 0 0 0 2px #3b6cff",
+          outline: "none",
+        },
       }}
     >
-      <Typography sx={{ color: tone.fg, fontSize: "13px", fontWeight: 700 }}>
+      <Typography
+        sx={{
+          color: props.status === "all" ? "#1f2430" : tone.fg,
+          fontSize: "14px",
+          fontWeight: 700,
+        }}
+      >
         {STATUS_LABEL[props.status]}
       </Typography>
       <Stack
         direction="row"
         alignItems="baseline"
         spacing={1}
-        sx={{ marginTop: 1 }}
+        justifyContent="center"
       >
         <Typography
-          sx={{ fontSize: "28px", fontWeight: 700, color: "#1f2430" }}
+          sx={{
+            color: props.status === "all" ? "#1f2430" : tone.fg,
+            fontSize: { xs: "26px", md: "32px" },
+            fontWeight: 700,
+            lineHeight: 1,
+          }}
         >
           {props.value.toLocaleString()}
         </Typography>
@@ -621,7 +788,111 @@ function SummaryTile(props: {
           {props.suffix}
         </Typography>
       </Stack>
-    </Box>
+    </ButtonBase>
+  );
+}
+
+function SummaryPanel(props: {
+  summary: {
+    total: number;
+    new: number;
+    removed: number;
+    modified: number;
+    deprecated: number;
+    unchanged: number;
+  };
+  suffix: string;
+  activeStatus: FilterStatus;
+  onStatusChange: (status: FilterStatus) => void;
+}) {
+  const items: { status: FilterStatus; value: number }[] = [
+    { status: "all", value: props.summary.total },
+    { status: "new", value: props.summary.new },
+    { status: "removed", value: props.summary.removed },
+    { status: "modified", value: props.summary.modified },
+    { status: "deprecated", value: props.summary.deprecated },
+    { status: "unchanged", value: props.summary.unchanged },
+  ];
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        borderColor: "#dfe5ef",
+        borderRadius: "8px",
+        marginBottom: 3,
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "repeat(2, minmax(0, 1fr))",
+            md: "repeat(6, minmax(0, 1fr))",
+          },
+        }}
+      >
+        {items.map((item, index) => (
+          <Box
+            key={item.status}
+            sx={{
+              borderLeft: {
+                xs: index % 2 === 0 ? "none" : "1px solid #e4e8f0",
+                md: index === 0 ? "none" : "1px solid #e4e8f0",
+              },
+              borderTop: {
+                xs: index < 2 ? "none" : "1px solid #e4e8f0",
+                md: "none",
+              },
+            }}
+          >
+            <SummaryMetric
+              status={item.status}
+              value={item.value}
+              suffix={props.suffix}
+              active={props.activeStatus === item.status}
+              onClick={props.onStatusChange}
+            />
+          </Box>
+        ))}
+      </Box>
+    </Paper>
+  );
+}
+
+function SelectFilter(props: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  optionLabel?: (value: string) => string;
+  minWidth?: number;
+}) {
+  return (
+    <FormControl
+      size="small"
+      sx={{ minWidth: { xs: "100%", md: props.minWidth || 150 } }}
+    >
+      <Select
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        displayEmpty
+        sx={{
+          borderRadius: "6px",
+          color: "#596174",
+          fontSize: "14px",
+          height: "44px",
+        }}
+      >
+        <MenuItem value="all">{props.label}: All</MenuItem>
+        {props.options.map((option) => (
+          <MenuItem key={option} value={option}>
+            {props.label}: {props.optionLabel?.(option) || option}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   );
 }
 
@@ -641,23 +912,45 @@ function ConfigComparisonTable(props: {
 
   return (
     <TableContainer sx={{ border: "1px solid #e4e8f0", borderRadius: "8px" }}>
-      <Table size="small" sx={{ minWidth: 1180 }}>
+      <Table size="small" sx={{ minWidth: 1420 }}>
         <TableHead>
-          <TableRow>
+          <TableRow
+            sx={{
+              backgroundColor: "#fbfcff",
+              "& .MuiTableCell-root": {
+                color: "#2b3345",
+                fontSize: "13px",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              },
+            }}
+          >
             <TableCell>Status</TableCell>
             <TableCell>Item</TableCell>
             <TableCell>Scope</TableCell>
             <TableCell>Type</TableCell>
             <TableCell>Default ({props.fromVersion})</TableCell>
             <TableCell>Default ({props.toVersion})</TableCell>
+            <TableCell>Persists to cluster</TableCell>
+            <TableCell>Applies to SET_VAR</TableCell>
             <TableCell>Deprecated</TableCell>
-            <TableCell>Description</TableCell>
+            <TableCell>Change note</TableCell>
             <TableCell>Source</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {props.rows.map((row) => (
-            <TableRow hover key={`${row.content_type}-${row.item_key}`}>
+            <TableRow
+              hover
+              key={`${row.content_type}-${row.item_key}`}
+              sx={{
+                "& .MuiTableCell-root": {
+                  borderColor: "#e8edf5",
+                  paddingBottom: "14px",
+                  paddingTop: "14px",
+                },
+              }}
+            >
               <TableCell>
                 <StatusChip status={row.status} />
               </TableCell>
@@ -693,6 +986,12 @@ function ConfigComparisonTable(props: {
               >
                 {displayValue(row.to_value)}
               </TableCell>
+              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
+                {row.persists_to_cluster || "-"}
+              </TableCell>
+              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
+                {row.applies_to_set_var || "-"}
+              </TableCell>
               <TableCell>
                 {row.is_deprecated ? (
                   <StatusChip status="deprecated" count={undefined} />
@@ -714,23 +1013,59 @@ function ConfigComparisonTable(props: {
                 )}
               </TableCell>
               <TableCell
-                sx={{ color: "#596174", fontSize: "13px", maxWidth: 360 }}
+                sx={{
+                  color: "#596174",
+                  fontSize: "13px",
+                  maxWidth: 420,
+                  whiteSpace: "pre-wrap",
+                }}
               >
-                {row.description || row.replacement || "-"}
+                {row.change_note || "-"}
+                {row.change_note_version && row.change_note_url && (
+                  <Typography sx={{ marginTop: "6px", fontSize: "12px" }}>
+                    <Button
+                      component="a"
+                      href={row.change_note_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      size="small"
+                      endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                      sx={{
+                        color: "#2f5bff",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        minWidth: 0,
+                        padding: 0,
+                        textTransform: "none",
+                      }}
+                    >
+                      {row.change_note_version}
+                    </Button>
+                  </Typography>
+                )}
               </TableCell>
               <TableCell>
                 {row.docs_url ? (
                   <Tooltip title="Open docs">
-                    <IconButton
+                    <Button
                       component="a"
                       href={row.docs_url}
                       target="_blank"
                       rel="noreferrer"
                       size="small"
+                      endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
                       aria-label={`Open docs for ${row.item_key}`}
+                      sx={{
+                        color: "#2f5bff",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        minWidth: 0,
+                        padding: 0,
+                        textTransform: "none",
+                      }}
                     >
-                      <OpenInNewIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
+                      Docs
+                    </Button>
                   </Tooltip>
                 ) : (
                   <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>
@@ -747,7 +1082,6 @@ function ConfigComparisonTable(props: {
 }
 
 export default function ConfigComparison() {
-  const theme = useTheme();
   const [dataset, setDataset] = React.useState<Dataset | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [fromVersion, setFromVersion] = React.useState("v8.1.2");
@@ -755,6 +1089,11 @@ export default function ConfigComparison() {
   const [contentType, setContentType] =
     React.useState<ContentTypeId>("system_variables");
   const [filterStatus, setFilterStatus] = React.useState<FilterStatus>("all");
+  const [scopeFilter, setScopeFilter] = React.useState<FieldFilter>("all");
+  const [typeFilter, setTypeFilter] = React.useState<FieldFilter>("all");
+  const [persistsFilter, setPersistsFilter] =
+    React.useState<FieldFilter>("all");
+  const [setVarFilter, setSetVarFilter] = React.useState<FieldFilter>("all");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -792,9 +1131,50 @@ export default function ConfigComparison() {
       return [];
     }
     return comparison.rows.filter(
-      (row) => matchesFilter(row, filterStatus) && matchesSearch(row, search)
+      (row) =>
+        matchesFilter(row, filterStatus) &&
+        matchesFieldFilter(row.scope, scopeFilter) &&
+        matchesFieldFilter(row.value_type, typeFilter) &&
+        matchesFieldFilter(row.persists_to_cluster, persistsFilter) &&
+        matchesFieldFilter(row.applies_to_set_var, setVarFilter) &&
+        matchesSearch(row, search)
     );
-  }, [comparison, filterStatus, search]);
+  }, [
+    comparison,
+    filterStatus,
+    persistsFilter,
+    scopeFilter,
+    search,
+    setVarFilter,
+    typeFilter,
+  ]);
+
+  const scopeOptions = React.useMemo(
+    () =>
+      comparison ? uniqueFilterValues(comparison.rows, (row) => row.scope) : [],
+    [comparison]
+  );
+  const typeOptions = React.useMemo(
+    () =>
+      comparison
+        ? uniqueFilterValues(comparison.rows, (row) => row.value_type)
+        : [],
+    [comparison]
+  );
+  const persistsOptions = React.useMemo(
+    () =>
+      comparison
+        ? uniqueFilterValues(comparison.rows, (row) => row.persists_to_cluster)
+        : [],
+    [comparison]
+  );
+  const setVarOptions = React.useMemo(
+    () =>
+      comparison
+        ? uniqueFilterValues(comparison.rows, (row) => row.applies_to_set_var)
+        : [],
+    [comparison]
+  );
 
   const visibleRows = filteredRows.slice(
     page * rowsPerPage,
@@ -803,7 +1183,26 @@ export default function ConfigComparison() {
 
   React.useEffect(() => {
     setPage(0);
-  }, [fromVersion, toVersion, contentType, filterStatus, search, rowsPerPage]);
+  }, [
+    fromVersion,
+    toVersion,
+    contentType,
+    filterStatus,
+    scopeFilter,
+    typeFilter,
+    persistsFilter,
+    setVarFilter,
+    search,
+    rowsPerPage,
+  ]);
+
+  React.useEffect(() => {
+    setFilterStatus("all");
+    setScopeFilter("all");
+    setTypeFilter("all");
+    setPersistsFilter("all");
+    setSetVarFilter("all");
+  }, [fromVersion, toVersion, contentType]);
 
   if (error) {
     return (
@@ -827,6 +1226,16 @@ export default function ConfigComparison() {
     `${version.version}${
       version.release_date ? ` (${version.release_date})` : ""
     }`;
+  const summarySuffix =
+    contentType === "system_variables" ? "variables" : "items";
+  const searchPlaceholder =
+    contentType === "system_variables"
+      ? "Search by variable name, value, or change note..."
+      : "Search by config name, value, or change note...";
+  const handleStatusChange = (status: FilterStatus) => {
+    setFilterStatus(status);
+    setPage(0);
+  };
 
   return (
     <Box sx={{ padding: { xs: "24px 16px", md: "32px 32px 48px" } }}>
@@ -853,46 +1262,47 @@ export default function ConfigComparison() {
             selected versions.
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<FileDownloadOutlinedIcon />}
-          onClick={() =>
-            downloadCsv(
-              filteredRows,
-              `${fromVersion}_to_${toVersion}_${contentType}.csv`
-            )
-          }
-          sx={{
-            alignSelf: { xs: "stretch", md: "center" },
-            borderRadius: "6px",
-          }}
-        >
-          Export Results
-        </Button>
       </Stack>
 
       <Paper
         variant="outlined"
-        sx={{ padding: 2, borderRadius: "8px", marginBottom: 3 }}
+        sx={{
+          borderColor: "#dfe5ef",
+          borderRadius: "8px",
+          marginBottom: 3,
+          padding: { xs: 2, md: 3 },
+        }}
       >
-        <Grid container spacing={2} alignItems="center">
+        <Grid container spacing={3} alignItems="center">
           <Grid item xs={12} md={5}>
             <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
               Select Versions
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              <FormControl fullWidth size="small">
-                <Select
-                  value={fromVersion}
-                  onChange={(event) => setFromVersion(event.target.value)}
+              <Box sx={{ flex: 1 }}>
+                <Typography
+                  sx={{
+                    color: "#687083",
+                    fontSize: "13px",
+                    marginBottom: "6px",
+                  }}
                 >
-                  {versions.map((version) => (
-                    <MenuItem value={version.version} key={version.version}>
-                      {versionLabel(version)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  From
+                </Typography>
+                <FormControl fullWidth size="small">
+                  <Select
+                    value={fromVersion}
+                    onChange={(event) => setFromVersion(event.target.value)}
+                    sx={{ height: "44px" }}
+                  >
+                    {versions.map((version) => (
+                      <MenuItem value={version.version} key={version.version}>
+                        {versionLabel(version)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
               <Tooltip title="Swap versions">
                 <IconButton
                   aria-label="Swap versions"
@@ -904,21 +1314,41 @@ export default function ConfigComparison() {
                   <SwapHorizIcon />
                 </IconButton>
               </Tooltip>
-              <FormControl fullWidth size="small">
-                <Select
-                  value={toVersion}
-                  onChange={(event) => setToVersion(event.target.value)}
+              <Box sx={{ flex: 1 }}>
+                <Typography
+                  sx={{
+                    color: "#687083",
+                    fontSize: "13px",
+                    marginBottom: "6px",
+                  }}
                 >
-                  {versions.map((version) => (
-                    <MenuItem value={version.version} key={version.version}>
-                      {versionLabel(version)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  To
+                </Typography>
+                <FormControl fullWidth size="small">
+                  <Select
+                    value={toVersion}
+                    onChange={(event) => setToVersion(event.target.value)}
+                    sx={{ height: "44px" }}
+                  >
+                    {versions.map((version) => (
+                      <MenuItem value={version.version} key={version.version}>
+                        {versionLabel(version)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
             </Stack>
           </Grid>
-          <Grid item xs={12} md={7}>
+          <Grid
+            item
+            xs={12}
+            md={7}
+            sx={{
+              borderLeft: { xs: "none", md: "1px solid #e4e8f0" },
+              paddingLeft: { md: "32px !important" },
+            }}
+          >
             <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
               Select Content
             </Typography>
@@ -928,13 +1358,17 @@ export default function ConfigComparison() {
               onChange={(_, value) => value && setContentType(value)}
               sx={{
                 flexWrap: "wrap",
-                gap: "8px",
                 "& .MuiToggleButtonGroup-grouped": {
                   border: "1px solid #dbe1ec !important",
-                  borderRadius: "6px !important",
                   margin: 0,
                   textTransform: "none",
-                  padding: "8px 14px",
+                  padding: "10px 18px",
+                  "&.Mui-selected": {
+                    backgroundColor: "#f4f7ff",
+                    borderColor: "#7aa0ff !important",
+                    color: "#2f5bff",
+                    fontWeight: 700,
+                  },
                 },
               }}
             >
@@ -948,54 +1382,40 @@ export default function ConfigComparison() {
         </Grid>
       </Paper>
 
-      <Grid container spacing={2} sx={{ marginBottom: 3 }}>
-        <Grid item xs={6} md={2}>
-          <SummaryTile status="all" value={summary.total} suffix="items" />
-        </Grid>
-        <Grid item xs={6} md={2}>
-          <SummaryTile status="new" value={summary.new} suffix="items" />
-        </Grid>
-        <Grid item xs={6} md={2}>
-          <SummaryTile
-            status="removed"
-            value={summary.removed}
-            suffix="items"
-          />
-        </Grid>
-        <Grid item xs={6} md={2}>
-          <SummaryTile
-            status="modified"
-            value={summary.modified}
-            suffix="items"
-          />
-        </Grid>
-        <Grid item xs={6} md={2}>
-          <SummaryTile
-            status="deprecated"
-            value={summary.deprecated}
-            suffix="items"
-          />
-        </Grid>
-        <Grid item xs={6} md={2}>
-          <SummaryTile
-            status="unchanged"
-            value={summary.unchanged}
-            suffix="items"
-          />
-        </Grid>
-      </Grid>
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        sx={{ color: "#687083", marginBottom: 3 }}
+      >
+        <InfoOutlinedIcon sx={{ color: "#8a94a6", fontSize: 18 }} />
+        <Typography sx={{ fontSize: "14px" }}>
+          Status is calculated from newly deployed TiDB clusters. Change notes
+          come from release notes.{" "}
+          <Box component="span" sx={{ color: "#2f5bff", fontWeight: 700 }}>
+            Learn more about data sources and limitations.
+          </Box>
+        </Typography>
+      </Stack>
+
+      <SummaryPanel
+        summary={summary}
+        suffix={summarySuffix}
+        activeStatus={filterStatus}
+        onStatusChange={handleStatusChange}
+      />
 
       <Stack
         direction={{ xs: "column", md: "row" }}
         spacing={2}
         alignItems={{ xs: "stretch", md: "center" }}
-        sx={{ marginBottom: 2 }}
+        sx={{ flexWrap: "wrap", marginBottom: 2, rowGap: 2 }}
       >
         <TextField
           size="small"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by item name, value, or description"
+          placeholder={searchPlaceholder}
           sx={{ width: { xs: "100%", md: 420 } }}
           InputProps={{
             startAdornment: (
@@ -1005,29 +1425,63 @@ export default function ConfigComparison() {
             ),
           }}
         />
-        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-          {STATUS_ORDER.map((status) => (
-            <Button
-              key={status}
-              size="small"
-              onClick={() => setFilterStatus(status)}
-              sx={{
-                borderRadius: "6px",
-                textTransform: "none",
-                color:
-                  filterStatus === status
-                    ? STATUS_TONE[status].fg
-                    : theme.palette.carbon[700],
-                backgroundColor:
-                  filterStatus === status
-                    ? STATUS_TONE[status].bg
-                    : "transparent",
-              }}
-            >
-              {STATUS_LABEL[status]}
-            </Button>
-          ))}
-        </Stack>
+        <SelectFilter
+          label="Status"
+          value={filterStatus}
+          options={STATUS_ORDER.filter((status) => status !== "all")}
+          onChange={(value) => setFilterStatus(value as FilterStatus)}
+          optionLabel={(value) => STATUS_LABEL[value as FilterStatus]}
+          minWidth={146}
+        />
+        <SelectFilter
+          label="Scope"
+          value={scopeFilter}
+          options={scopeOptions}
+          onChange={setScopeFilter}
+          minWidth={146}
+        />
+        <SelectFilter
+          label="Type"
+          value={typeFilter}
+          options={typeOptions}
+          onChange={setTypeFilter}
+          minWidth={132}
+        />
+        <SelectFilter
+          label="Persists to cluster"
+          value={persistsFilter}
+          options={persistsOptions}
+          onChange={setPersistsFilter}
+          minWidth={210}
+        />
+        <SelectFilter
+          label="Applies to SET_VAR"
+          value={setVarFilter}
+          options={setVarOptions}
+          onChange={setSetVarFilter}
+          minWidth={220}
+        />
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadOutlinedIcon />}
+          onClick={() =>
+            downloadCsv(
+              filteredRows,
+              `${fromVersion}_to_${toVersion}_${contentType}.csv`
+            )
+          }
+          sx={{
+            borderRadius: "6px",
+            color: "#2f5bff",
+            fontWeight: 700,
+            height: "44px",
+            marginLeft: { md: "auto !important" },
+            textTransform: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Export Results
+        </Button>
       </Stack>
 
       <ConfigComparisonTable
@@ -1040,6 +1494,9 @@ export default function ConfigComparison() {
         component="div"
         count={filteredRows.length}
         page={page}
+        labelDisplayedRows={({ from, to, count }) =>
+          `Showing ${from} to ${to} of ${count.toLocaleString()} ${summarySuffix}`
+        }
         onPageChange={(_, nextPage) => setPage(nextPage)}
         rowsPerPage={rowsPerPage}
         rowsPerPageOptions={[10, 25, 50]}
