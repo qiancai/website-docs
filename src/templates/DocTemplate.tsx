@@ -32,6 +32,7 @@ import { getSelectedNavItem } from "components/Layout/Header/getSelectedNavItem"
 import GitCommitInfoCard from "components/Card/GitCommitInfoCard";
 import { FeedbackSection } from "components/Card/FeedbackSection";
 import { FeedbackSurveyCampaign } from "components/Campaign/FeedbackSurvey";
+import ScrollToTopBtn from "components/Button/ScrollToTopBtn";
 import { DOC_HOME_URL } from "shared/resources";
 import { useIsAutoTranslation } from "shared/useIsAutoTranslation";
 import { useReportReadingRate } from "shared/useReportReadingRate";
@@ -77,6 +78,9 @@ interface DocTemplateProps {
     essentialNavigation?: {
       essentialNavigation: RepoNav;
     };
+    premiumNavigation?: {
+      premiumNavigation: RepoNav;
+    };
   };
 }
 
@@ -119,9 +123,11 @@ function DocTemplate({
     navigation: originNav,
     starterNavigation: starterNav,
     essentialNavigation: essentialNav,
+    premiumNavigation: premiumNav,
   } = data;
 
-  const { cloudPlan, setCloudPlan, isStarter, isEssential } = useCloudPlan();
+  const { cloudPlan, setCloudPlan, isStarter, isEssential, isPremium } =
+    useCloudPlan();
   useCloudPlanNavigate(
     namespace,
     inDefaultPlan ?? null,
@@ -136,6 +142,7 @@ function DocTemplate({
   const essentialNavigation = essentialNav
     ? essentialNav.essentialNavigation
     : [];
+  const premiumNavigation = premiumNav ? premiumNav.premiumNavigation : [];
   const navigationByNamespace =
     namespace !== TOCNamespace.TiDBCloud
       ? classicNavigation
@@ -143,18 +150,24 @@ function DocTemplate({
       ? starterNavigation
       : isEssential
       ? essentialNavigation
+      : isPremium
+      ? premiumNavigation
       : classicNavigation;
   const navigation = filterTOC(navigationByNamespace);
 
   const { language, t } = useI18next();
   const haveStarter = starterNavigation.length > 0;
   const haveEssential = essentialNavigation.length > 0;
+  const havePremium = premiumNavigation.length > 0;
   const availablePlans: CloudPlan[] = [CloudPlan.Dedicated];
   if (haveStarter) {
     availablePlans.push(CloudPlan.Starter);
   }
   if (haveEssential) {
     availablePlans.push(CloudPlan.Essential);
+  }
+  if (havePremium) {
+    availablePlans.push(CloudPlan.Premium);
   }
 
   const rightTocData: TableOfContent[] | undefined = React.useMemo(() => {
@@ -391,11 +404,15 @@ function DocTemplate({
                   position: "fixed",
                   bottom: "1rem",
                   right: "1rem",
-                  zIndex: 9,
+                  zIndex: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: "0.75rem",
                 }}
               >
+                <ScrollToTopBtn />
                 <FeedbackSurveyCampaign />
-                {/* <ScrollToTopBtn /> */}
               </Box>
             </Box>
           </Box>
@@ -412,6 +429,7 @@ export const query = graphql`
     $navUrl: String!
     $starterNavUrl: String!
     $essentialNavUrl: String!
+    $premiumNavUrl: String!
   ) {
     site {
       siteMetadata {
@@ -442,6 +460,10 @@ export const query = graphql`
 
     essentialNavigation: mdx(slug: { eq: $essentialNavUrl }) {
       essentialNavigation
+    }
+
+    premiumNavigation: mdx(slug: { eq: $premiumNavUrl }) {
+      premiumNavigation
     }
 
     locales: allLocale(filter: { language: { eq: $language } }) {

@@ -14,7 +14,6 @@ import { generateConfig, generateNavTOCPath } from "../../gatsby/path";
 import { getTOCNamespace } from "../../gatsby/toc-namespace";
 import { calculateFileUrl } from "../../gatsby/url-resolver";
 import { cpMarkdown } from "../../gatsby/cp-markdown";
-import { loadTooltipTerms, validateTooltipReferences } from "../tooltip-terms";
 import {
   getTidbCloudFilesFromTocs,
   determineInDefaultPlan,
@@ -52,13 +51,7 @@ export const createDocs = async (createPagesArgs: CreatePagesArgs) => {
           frontmatter {
             aliases
           }
-          mdxAST
           slug
-          parent {
-            ... on File {
-              relativePath
-            }
-          }
         }
       }
     }
@@ -75,12 +68,6 @@ export const createDocs = async (createPagesArgs: CreatePagesArgs) => {
     }),
     tocFilesMap,
     tocNamesByFileMap
-  );
-
-  const tooltipTerms = loadTooltipTerms();
-  validateTooltipReferences(
-    nodes,
-    new Set(tooltipTerms.map((term) => term.id))
   );
 
   sig.info(
@@ -139,6 +126,7 @@ export const createDocs = async (createPagesArgs: CreatePagesArgs) => {
       pathConfig,
       "tidb-cloud-essential"
     );
+    const premiumNavUrl = generateNavTOCPath(pathConfig, "tidb-cloud-premium");
 
     const locale = [Locale.en, Locale.zh, Locale.ja]
       .map((l) =>
@@ -170,6 +158,7 @@ export const createDocs = async (createPagesArgs: CreatePagesArgs) => {
         navUrl,
         starterNavUrl,
         essentialNavUrl,
+        premiumNavUrl,
         availIn: {
           locale,
           version: versionRecord[pathConfig.locale][pathConfig.repo][name],

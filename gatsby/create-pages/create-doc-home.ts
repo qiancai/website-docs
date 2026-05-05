@@ -9,7 +9,6 @@ import {
   TOCNamespace,
   TOCNamespaceSlugMap,
 } from "../../src/shared/interface";
-import { loadTooltipTerms, validateTooltipReferences } from "../tooltip-terms";
 import {
   generateConfig,
   generateNavTOCPath,
@@ -37,13 +36,7 @@ export const createDocHome = async ({
         frontmatter {
           aliases
         }
-        mdxAST
         slug
-        parent {
-          ... on File {
-            relativePath
-          }
-        }
       }
     }
   }
@@ -62,13 +55,7 @@ export const createDocHome = async ({
         frontmatter {
           aliases
         }
-        mdxAST
         slug
-        parent {
-          ... on File {
-            relativePath
-          }
-        }
       }
     }
   }
@@ -89,12 +76,6 @@ export const createDocHome = async ({
     return { ...node, pathConfig: config, name, filePath };
   });
 
-  const tooltipTerms = loadTooltipTerms();
-  validateTooltipReferences(
-    nodes,
-    new Set(tooltipTerms.map((term) => term.id))
-  );
-
   nodes.forEach((node) => {
     const { id, name, pathConfig, filePath } = node;
     const path = generateDocHomeUrl(name, pathConfig);
@@ -106,6 +87,7 @@ export const createDocHome = async ({
       pathConfig,
       "tidb-cloud-essential"
     );
+    const premiumNavUrl = generateNavTOCPath(pathConfig, "tidb-cloud-premium");
     const locale =
       process.env.WEBSITE_BUILD_TYPE === "archive"
         ? [Locale.en, Locale.zh]
@@ -123,6 +105,7 @@ export const createDocHome = async ({
         navUrl,
         starterNavUrl,
         essentialNavUrl,
+        premiumNavUrl,
         pageUrl: path,
         availIn: {
           locale,
