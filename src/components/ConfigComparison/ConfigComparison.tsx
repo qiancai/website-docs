@@ -4,9 +4,8 @@ import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
 import FormControl from "@mui/material/FormControl";
-import Grid from "@mui/material/Grid";
-import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -22,7 +21,6 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -42,8 +40,9 @@ const CONTENT_TYPE_IDS = [
 type ContentTypeId = typeof CONTENT_TYPE_IDS[number];
 
 type Status = "new" | "removed" | "modified" | "unchanged";
-type FilterStatus = Status | "deprecated" | "all";
-type FieldFilter = string;
+type FilterStatus = "changed" | "new" | "removed" | "modified" | "deprecated";
+type SummaryStatus = Exclude<FilterStatus, "changed">;
+type BadgeStatus = Status | FilterStatus;
 
 interface VersionInfo {
   version: string;
@@ -66,6 +65,11 @@ interface SystemVariableRow {
   MAX_VALUE?: unknown;
   POSSIBLE_VALUES?: unknown;
   IS_NOOP?: unknown;
+  PERSISTS_TO_CLUSTER?: string | null;
+  APPLIES_TO_SET_VAR?: string | null;
+  DOC_TYPE?: string | null;
+  DOC_RANGE?: string | null;
+  PURPOSE?: string | null;
 }
 
 interface ComponentConfigRow {
@@ -87,6 +91,11 @@ interface ReleaseEvent {
   release_note_url?: string | null;
 }
 
+type DocLinks = Record<
+  string,
+  Partial<Record<ContentTypeId, Record<string, string>>>
+>;
+
 interface Dataset {
   generatedAt: string;
   versions: VersionInfo[];
@@ -96,6 +105,7 @@ interface Dataset {
     Record<ContentTypeId, SystemVariableRow[] | ComponentConfigRow[]>
   >;
   releaseEvents: ReleaseEvent[];
+  docLinks?: DocLinks;
 }
 
 interface CollapsedConfigRow {
@@ -112,6 +122,8 @@ interface ComparisonRow {
   item_key: string;
   display_name: string;
   value_type?: string | null;
+  from_value_type?: string | null;
+  to_value_type?: string | null;
   from_value?: unknown;
   to_value?: unknown;
   field_changes: Record<string, { from: unknown; to: unknown }>;
@@ -119,6 +131,7 @@ interface ComparisonRow {
   deprecated_since?: string | null;
   deprecated_since_versions: string[];
   removed_since?: string | null;
+  doc_link?: string | null;
   replacement?: string | null;
   change_note?: string | null;
   change_note_type?: string | null;
@@ -145,25 +158,64 @@ interface ComparisonResult {
   label: string;
 }
 
+interface PopularComparison {
+  from: string;
+  to: string;
+}
+
 const DATASET_URL = "/data/config-comparison/dataset.json";
 const DATASET_REQUEST_TIMEOUT_MS = 15_000;
 
-const STATUS_ORDER: FilterStatus[] = [
-  "all",
+const STATUS_FILTER_ORDER: FilterStatus[] = [
   "new",
   "removed",
   "modified",
   "deprecated",
-  "unchanged",
 ];
 
-const STATUS_TONE: Record<FilterStatus, { fg: string; bg: string }> = {
-  all: { fg: "#1f2430", bg: "#eef3ff" },
+const STATUS_TONE: Record<BadgeStatus, { fg: string; bg: string }> = {
+  changed: {
+    fg: "var(--tiui-palette-secondary)",
+    bg: "var(--tiui-palette-peacock-100)",
+  },
   new: { fg: "#0f8f4d", bg: "#e8f6ee" },
   removed: { fg: "#ff2d2d", bg: "#fff0f0" },
   modified: { fg: "#ff5a1f", bg: "#fff1e8" },
   deprecated: { fg: "#8a35d8", bg: "#f5ecff" },
   unchanged: { fg: "#596174", bg: "#f2f4f8" },
+};
+
+const SUMMARY_STATUS_TONE: Record<SummaryStatus, string> = {
+  new: "#0f8f4d",
+  removed: "var(--tiui-palette-carbon-900)",
+  modified: "var(--tiui-palette-primary)",
+  deprecated: "var(--tiui-palette-carbon-600)",
+};
+
+const CHANGE_FIELD_LABEL_KEYS: Record<string, string> = {
+  VARIABLE_SCOPE: "configComparison.changeFields.scope",
+  DEFAULT_VALUE: "configComparison.changeFields.defaultValue",
+  MIN_VALUE: "configComparison.changeFields.minValue",
+  MAX_VALUE: "configComparison.changeFields.maxValue",
+  POSSIBLE_VALUES: "configComparison.changeFields.possibleValues",
+  IS_NOOP: "configComparison.changeFields.isNoop",
+  PERSISTS_TO_CLUSTER: "configComparison.changeFields.persistsToCluster",
+  DOC_TYPE: "configComparison.changeFields.docType",
+  DOC_RANGE: "configComparison.changeFields.docRange",
+  PURPOSE: "configComparison.changeFields.purpose",
+  Value: "configComparison.changeFields.value",
+};
+
+const CHANGE_DETAIL_TITLE_KEYS: Record<string, string> = {
+  defaultValue: "configComparison.changeItems.defaultValue",
+  scope: "configComparison.changeItems.scope",
+  type: "configComparison.changeItems.type",
+  range: "configComparison.changeItems.range",
+  possibleValues: "configComparison.changeItems.possibleValues",
+  persistsToCluster: "configComparison.changeItems.persistsToCluster",
+  isNoop: "configComparison.changeItems.isNoop",
+  purpose: "configComparison.changeItems.purpose",
+  value: "configComparison.changeItems.value",
 };
 
 const SYSTEM_COMPARE_FIELDS = [
@@ -172,7 +224,10 @@ const SYSTEM_COMPARE_FIELDS = [
   "MIN_VALUE",
   "MAX_VALUE",
   "POSSIBLE_VALUES",
-  "IS_NOOP",
+  "PERSISTS_TO_CLUSTER",
+  "DOC_TYPE",
+  "DOC_RANGE",
+  "PURPOSE",
 ] as const;
 
 function createEmptySummary(): ComparisonSummary {
@@ -273,8 +328,9 @@ function validateDataset(payload: unknown): Dataset {
     }
   }
 
+  const dataset = payload as unknown as Dataset;
   return {
-    ...(payload as Dataset),
+    ...dataset,
     releaseEvents: (releaseEvents || []) as ReleaseEvent[],
   };
 }
@@ -342,6 +398,17 @@ function displayValue(value: unknown, seen = new WeakSet<object>()): string {
   return normalized;
 }
 
+function formatTemplate(
+  template: string,
+  values: Record<string, string | number>
+) {
+  return Object.entries(values).reduce(
+    (text, [key, value]) =>
+      text.replace(new RegExp(`{{\\s*${key}\\s*}}`, "g"), String(value)),
+    template
+  );
+}
+
 function versionTuple(
   version?: string | null
 ): [number, number, number] | null {
@@ -370,6 +437,99 @@ function versionCompare(
     }
   }
   return 0;
+}
+
+function releaseDateTimestamp(version: VersionInfo) {
+  if (!version.release_date) {
+    return null;
+  }
+  const timestamp = Date.parse(`${version.release_date}T00:00:00Z`);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function compareVersionInfoByReleaseDate(
+  left: VersionInfo,
+  right: VersionInfo
+) {
+  const leftDate = releaseDateTimestamp(left);
+  const rightDate = releaseDateTimestamp(right);
+  if (leftDate !== null && rightDate !== null && leftDate !== rightDate) {
+    return leftDate - rightDate;
+  }
+  if (leftDate !== null && rightDate === null) {
+    return -1;
+  }
+  if (leftDate === null && rightDate !== null) {
+    return 1;
+  }
+  return (
+    versionCompare(left.version, right.version) ||
+    left.version.localeCompare(right.version)
+  );
+}
+
+function sortedVersionsByReleaseDate(versions: VersionInfo[]) {
+  return [...versions].sort(compareVersionInfoByReleaseDate);
+}
+
+function buildVersionOrder(versions: VersionInfo[]) {
+  return new Map(versions.map((version, index) => [version.version, index]));
+}
+
+function buildPopularComparisons(
+  versions: VersionInfo[],
+  limit = 3
+): PopularComparison[] {
+  const versionIndex = new Map(
+    versions.map((version, index) => [version.version, index])
+  );
+  const latestVersion = versions[versions.length - 1]?.version;
+  const candidates: PopularComparison[] = [
+    { from: "v7.5.0", to: "v8.5.0" },
+    { from: "v8.1.0", to: "v8.5.0" },
+  ];
+
+  if (latestVersion && latestVersion !== "v8.5.0") {
+    candidates.push({ from: "v8.5.0", to: latestVersion });
+  }
+  if (versions.length >= 2) {
+    candidates.push({
+      from: versions[versions.length - 2].version,
+      to: versions[versions.length - 1].version,
+    });
+  }
+
+  const seen = new Set<string>();
+  return candidates
+    .filter(({ from, to }) => {
+      const fromIndex = versionIndex.get(from);
+      const toIndex = versionIndex.get(to);
+      const key = `${from}->${to}`;
+      if (
+        fromIndex === undefined ||
+        toIndex === undefined ||
+        fromIndex >= toIndex ||
+        seen.has(key)
+      ) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+function compareVersionByOrder(
+  leftVersion: string,
+  rightVersion: string,
+  versionOrder: Map<string, number>
+) {
+  const left = versionOrder.get(leftVersion);
+  const right = versionOrder.get(rightVersion);
+  if (left !== undefined && right !== undefined) {
+    return left - right;
+  }
+  return versionCompare(leftVersion, rightVersion);
 }
 
 function inferValueType(
@@ -558,15 +718,15 @@ function fieldChanges(
   if (!fromRow || !toRow) {
     return changes;
   }
+  const fromRecord = fromRow as unknown as Record<string, unknown>;
+  const toRecord = toRow as unknown as Record<string, unknown>;
   for (const field of fields) {
-    const fromValue = normalizeValue(
-      (fromRow as Record<string, unknown>)[field]
-    );
-    const toValue = normalizeValue((toRow as Record<string, unknown>)[field]);
+    const fromValue = normalizeValue(fromRecord[field]);
+    const toValue = normalizeValue(toRecord[field]);
     if (fromValue !== toValue) {
       changes[field] = {
-        from: (fromRow as Record<string, unknown>)[field],
-        to: (toRow as Record<string, unknown>)[field],
+        from: fromRecord[field],
+        to: toRecord[field],
       };
     }
   }
@@ -585,6 +745,18 @@ function statusFor(
     return "removed";
   }
   return Object.keys(changes).length > 0 ? "modified" : "unchanged";
+}
+
+function docLinkForRow(
+  dataset: Dataset,
+  status: Status,
+  contentType: ContentTypeId,
+  itemKey: string,
+  fromVersion: string,
+  toVersion: string
+) {
+  const docVersion = status === "removed" ? fromVersion : toVersion;
+  return dataset.docLinks?.[docVersion]?.[contentType]?.[itemKey] || null;
 }
 
 function compare(
@@ -630,6 +802,14 @@ function compare(
         : (["Value"] as const);
     const changes = fieldChanges(fromRow, toRow, compareFields);
     const status = statusFor(fromRow, toRow, changes);
+    const docLink = docLinkForRow(
+      dataset,
+      status,
+      contentType,
+      itemKey,
+      fromVersion,
+      toVersion
+    );
     const deprecatedSinceVersions = Array.from(
       new Set(
         itemReleaseEvents
@@ -662,17 +842,27 @@ function compare(
       const effectiveVariable = effectiveRow as SystemVariableRow | undefined;
       const fromValue = fromVariable?.DEFAULT_VALUE;
       const toValue = toVariable?.DEFAULT_VALUE;
+      const fromValueType =
+        fromVariable?.DOC_TYPE ||
+        inferValueType(fromValue, undefined, fromVariable?.POSSIBLE_VALUES);
+      const toValueType =
+        toVariable?.DOC_TYPE ||
+        inferValueType(undefined, toValue, toVariable?.POSSIBLE_VALUES);
       rows.push({
         status,
         content_type: contentType,
         component: spec.component,
         item_key: itemKey,
         display_name: itemKey,
-        value_type: inferValueType(
-          fromValue,
-          toValue,
-          effectiveVariable?.POSSIBLE_VALUES
-        ),
+        value_type:
+          effectiveVariable?.DOC_TYPE ||
+          inferValueType(
+            fromValue,
+            toValue,
+            effectiveVariable?.POSSIBLE_VALUES
+          ),
+        from_value_type: fromValueType,
+        to_value_type: toValueType,
         from_value: fromValue,
         to_value: toValue,
         field_changes: changes,
@@ -680,6 +870,7 @@ function compare(
         deprecated_since: isDeprecated ? activeDeprecatedSince : null,
         deprecated_since_versions: deprecatedSinceVersions,
         removed_since: activeRemovedSince,
+        doc_link: docLink,
         replacement: firstIntervalEvent?.replacement || null,
         change_note: changeNote,
         change_note_type: firstIntervalEvent?.event_type,
@@ -693,6 +884,8 @@ function compare(
       const fromConfig = fromRow as CollapsedConfigRow | undefined;
       const toConfig = toRow as CollapsedConfigRow | undefined;
       const effectiveConfig = effectiveRow as CollapsedConfigRow | undefined;
+      const fromValueType = inferValueType(fromConfig?.Value, undefined);
+      const toValueType = inferValueType(undefined, toConfig?.Value);
       rows.push({
         status,
         content_type: contentType,
@@ -700,6 +893,8 @@ function compare(
         item_key: itemKey,
         display_name: itemKey,
         value_type: inferValueType(fromConfig?.Value, toConfig?.Value),
+        from_value_type: fromValueType,
+        to_value_type: toValueType,
         from_value: fromConfig?.Value,
         to_value: toConfig?.Value,
         field_changes: changes,
@@ -707,6 +902,7 @@ function compare(
         deprecated_since: isDeprecated ? activeDeprecatedSince : null,
         deprecated_since_versions: deprecatedSinceVersions,
         removed_since: activeRemovedSince,
+        doc_link: docLink,
         replacement: firstIntervalEvent?.replacement || null,
         change_note: changeNote,
         change_note_type: firstIntervalEvent?.event_type,
@@ -728,21 +924,15 @@ function matchesSearch(row: ComparisonRow, search: string) {
     return true;
   }
   const needle = search.toLowerCase();
-  return [
-    row.item_key,
-    row.display_name,
-    row.change_note,
-    displayValue(row.from_value),
-    displayValue(row.to_value),
-  ]
+  return [row.item_key, row.display_name]
     .join(" ")
     .toLowerCase()
     .includes(needle);
 }
 
 function matchesFilter(row: ComparisonRow, status: FilterStatus) {
-  if (status === "all") {
-    return true;
+  if (status === "changed") {
+    return row.status !== "unchanged" || row.is_deprecated;
   }
   if (status === "deprecated") {
     return row.is_deprecated;
@@ -750,27 +940,136 @@ function matchesFilter(row: ComparisonRow, status: FilterStatus) {
   return row.status === status;
 }
 
-function normalizeFilterValue(value?: string | null) {
-  const normalized = value?.trim();
-  return normalized || "-";
+function changeFieldLabel(field: string, t: (key: string) => string) {
+  const key = CHANGE_FIELD_LABEL_KEYS[field];
+  return key ? t(key) : field;
 }
 
-function matchesFieldFilter(
-  value: string | null | undefined,
-  filter: FieldFilter
+function changeDetailTitle(
+  key: keyof typeof CHANGE_DETAIL_TITLE_KEYS,
+  t: (key: string) => string
 ) {
-  return filter === "all" || normalizeFilterValue(value) === filter;
+  return t(CHANGE_DETAIL_TITLE_KEYS[key]);
 }
 
-function uniqueFilterValues(
-  rows: ComparisonRow[],
-  getValue: (row: ComparisonRow) => string | null | undefined
+function formatChangeValue(from: unknown, to: unknown) {
+  return `${displayValue(from)} -> ${displayValue(to)}`;
+}
+
+function formatLabeledChange(label: string, from: unknown, to: unknown) {
+  return `${label}: ${formatChangeValue(from, to)}`;
+}
+
+interface ChangeDetailItem {
+  title: string;
+  lines: string[];
+}
+
+function buildChangeDetailItems(
+  row: ComparisonRow,
+  t: (key: string) => string
 ) {
-  return Array.from(
-    new Set(rows.map((row) => normalizeFilterValue(getValue(row))))
-  )
-    .filter((value) => value !== "-")
-    .sort((a, b) => a.localeCompare(b));
+  const items: ChangeDetailItem[] = [];
+  const handledFields = new Set<string>();
+
+  const addFieldChange = (
+    field: string,
+    titleKey: keyof typeof CHANGE_DETAIL_TITLE_KEYS,
+    label?: string
+  ) => {
+    const change = row.field_changes[field];
+    if (!change) {
+      return;
+    }
+    handledFields.add(field);
+    items.push({
+      title: changeDetailTitle(titleKey, t),
+      lines: [
+        label
+          ? formatLabeledChange(label, change.from, change.to)
+          : formatChangeValue(change.from, change.to),
+      ],
+    });
+  };
+
+  addFieldChange("VARIABLE_SCOPE", "scope");
+  addFieldChange("PERSISTS_TO_CLUSTER", "persistsToCluster");
+
+  const docTypeChange = row.field_changes.DOC_TYPE;
+  if (docTypeChange) {
+    handledFields.add("DOC_TYPE");
+    items.push({
+      title: changeDetailTitle("type", t),
+      lines: [formatChangeValue(docTypeChange.from, docTypeChange.to)],
+    });
+  } else if (
+    row.from_value_type &&
+    row.to_value_type &&
+    row.from_value_type !== row.to_value_type
+  ) {
+    items.push({
+      title: changeDetailTitle("type", t),
+      lines: [formatChangeValue(row.from_value_type, row.to_value_type)],
+    });
+  }
+
+  addFieldChange("DEFAULT_VALUE", "defaultValue");
+  addFieldChange("Value", "value");
+  addFieldChange("POSSIBLE_VALUES", "possibleValues");
+
+  const rangeLines: string[] = [];
+  for (const field of ["MIN_VALUE", "MAX_VALUE", "DOC_RANGE"]) {
+    const change = row.field_changes[field];
+    if (!change) {
+      continue;
+    }
+    handledFields.add(field);
+    rangeLines.push(
+      formatLabeledChange(changeFieldLabel(field, t), change.from, change.to)
+    );
+  }
+  if (rangeLines.length > 0) {
+    items.push({
+      title: changeDetailTitle("range", t),
+      lines: rangeLines,
+    });
+  }
+
+  addFieldChange("PURPOSE", "purpose");
+
+  for (const [field, change] of Object.entries(row.field_changes)) {
+    if (handledFields.has(field)) {
+      continue;
+    }
+    items.push({
+      title: changeFieldLabel(field, t),
+      lines: [formatChangeValue(change.from, change.to)],
+    });
+  }
+
+  return items;
+}
+
+function changeDetailsDisplayText(
+  row: ComparisonRow,
+  t: (key: string) => string
+) {
+  return buildChangeDetailItems(row, t)
+    .map((item) =>
+      item.lines.length > 0
+        ? `${item.title}: ${item.lines.join("; ")}`
+        : item.title
+    )
+    .join("\n");
+}
+
+function hasDisplayedValueChange(
+  row: ComparisonRow,
+  contentType: ContentTypeId
+) {
+  const valueField =
+    contentType === "system_variables" ? "DEFAULT_VALUE" : "Value";
+  return Object.prototype.hasOwnProperty.call(row.field_changes, valueField);
 }
 
 function csvEscape(value: unknown) {
@@ -778,7 +1077,12 @@ function csvEscape(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function downloadCsv(rows: ComparisonRow[], filename: string) {
+function downloadCsv(
+  rows: ComparisonRow[],
+  filename: string,
+  t: (key: string) => string,
+  includeChangeNote: boolean
+) {
   const headers = [
     "status",
     "item_key",
@@ -786,21 +1090,26 @@ function downloadCsv(rows: ComparisonRow[], filename: string) {
     "value_type",
     "from_value",
     "to_value",
+    "changed_fields",
     "is_deprecated",
     "deprecated_since",
+    "doc_link",
     "replacement",
-    "change_note",
-    "change_note_version",
-    "change_note_url",
+    ...(includeChangeNote
+      ? ["change_note", "change_note_version", "change_note_url"]
+      : []),
     "source",
   ];
   const csv = [
     headers.join(","),
     ...rows.map((row) =>
       headers
-        .map((header) =>
-          csvEscape((row as unknown as Record<string, unknown>)[header])
-        )
+        .map((header) => {
+          if (header === "changed_fields") {
+            return csvEscape(changeDetailsDisplayText(row, t));
+          }
+          return csvEscape((row as unknown as Record<string, unknown>)[header]);
+        })
         .join(",")
     ),
   ].join("\n");
@@ -813,7 +1122,7 @@ function downloadCsv(rows: ComparisonRow[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function StatusChip(props: { status: FilterStatus; count?: number }) {
+function StatusChip(props: { status: BadgeStatus; count?: number }) {
   const { t } = useI18next();
   const tone = STATUS_TONE[props.status];
   return (
@@ -832,43 +1141,88 @@ function StatusChip(props: { status: FilterStatus; count?: number }) {
   );
 }
 
+function changeTypeChipStatuses(row: ComparisonRow): BadgeStatus[] {
+  if (!row.is_deprecated) {
+    return [row.status];
+  }
+  if (row.status === "unchanged") {
+    return ["deprecated"];
+  }
+  if (row.status === "modified" || row.status === "new") {
+    return [row.status, "deprecated"];
+  }
+  return [row.status];
+}
+
+function ChangeTypeChips(props: { row: ComparisonRow }) {
+  const statuses = changeTypeChipStatuses(props.row);
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      sx={{ flexWrap: "wrap", rowGap: 0.5 }}
+    >
+      {statuses.map((status, index) => (
+        <React.Fragment key={status}>
+          {index > 0 && (
+            <Typography
+              component="span"
+              sx={{
+                color: "#687083",
+                fontSize: "13px",
+                fontWeight: 700,
+                marginX: 0.5,
+              }}
+            >
+              +
+            </Typography>
+          )}
+          <StatusChip status={status} />
+        </React.Fragment>
+      ))}
+    </Stack>
+  );
+}
+
 function SummaryMetric(props: {
-  status: FilterStatus;
+  status: SummaryStatus;
   value: number;
   suffix: string;
   active: boolean;
-  onClick: (status: FilterStatus) => void;
+  onClick: (status: SummaryStatus) => void;
 }) {
   const { t } = useI18next();
-  const tone = STATUS_TONE[props.status];
+  const tone = SUMMARY_STATUS_TONE[props.status];
   return (
     <ButtonBase
       onClick={() => props.onClick(props.status)}
       sx={{
         alignItems: "center",
-        backgroundColor: props.active ? "#f8fbff" : "#fff",
+        backgroundColor: props.active
+          ? "var(--tiui-palette-peacock-50)"
+          : "#fff",
         display: "flex",
         flexDirection: "column",
-        gap: "8px",
-        minHeight: "112px",
-        padding: "18px 16px",
+        gap: "4px",
+        minHeight: { xs: "92px", md: "84px" },
+        padding: { xs: "12px", md: "10px 14px" },
         textAlign: "center",
         transition: "background-color 120ms ease, box-shadow 120ms ease",
         width: "100%",
         "&:hover": {
-          backgroundColor: "#f8fbff",
+          backgroundColor: "var(--tiui-palette-peacock-50)",
         },
         "&:focus-visible": {
-          boxShadow: "inset 0 0 0 2px #3b6cff",
+          boxShadow: "inset 0 0 0 2px var(--tiui-palette-secondary)",
           outline: "none",
         },
       }}
     >
       <Typography
         sx={{
-          color: props.status === "all" ? "#1f2430" : tone.fg,
+          color: tone,
           fontSize: "14px",
-          fontWeight: 700,
+          fontWeight: 600,
         }}
       >
         {t(`configComparison.status.${props.status}`)}
@@ -881,9 +1235,9 @@ function SummaryMetric(props: {
       >
         <Typography
           sx={{
-            color: props.status === "all" ? "#1f2430" : tone.fg,
-            fontSize: { xs: "26px", md: "32px" },
-            fontWeight: 700,
+            color: tone,
+            fontSize: { xs: "22px", md: "26px" },
+            fontWeight: 600,
             lineHeight: 1,
           }}
         >
@@ -903,13 +1257,11 @@ function SummaryPanel(props: {
   activeStatus: FilterStatus;
   onStatusChange: (status: FilterStatus) => void;
 }) {
-  const items: { status: FilterStatus; value: number }[] = [
-    { status: "all", value: props.summary.total },
+  const items: { status: SummaryStatus; value: number }[] = [
     { status: "new", value: props.summary.new },
     { status: "removed", value: props.summary.removed },
     { status: "modified", value: props.summary.modified },
     { status: "deprecated", value: props.summary.deprecated },
-    { status: "unchanged", value: props.summary.unchanged },
   ];
 
   return (
@@ -918,8 +1270,10 @@ function SummaryPanel(props: {
       sx={{
         borderColor: "#dfe5ef",
         borderRadius: "8px",
-        marginBottom: 3,
+        marginBottom: 2,
+        maxWidth: { md: 960 },
         overflow: "hidden",
+        width: "100%",
       }}
     >
       <Box
@@ -927,7 +1281,7 @@ function SummaryPanel(props: {
           display: "grid",
           gridTemplateColumns: {
             xs: "repeat(2, minmax(0, 1fr))",
-            md: "repeat(6, minmax(0, 1fr))",
+            md: "repeat(4, minmax(0, 1fr))",
           },
         }}
       >
@@ -959,6 +1313,62 @@ function SummaryPanel(props: {
   );
 }
 
+function ChangeDetailList(props: { row: ComparisonRow }) {
+  const { t } = useI18next();
+  const items = buildChangeDetailItems(props.row, t);
+
+  if (items.length === 0) {
+    return (
+      <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>-</Typography>
+    );
+  }
+
+  return (
+    <Box
+      component="ul"
+      sx={{
+        margin: 0,
+        paddingLeft: "18px",
+        "& li::marker": {
+          color: "#8a94a6",
+        },
+      }}
+    >
+      {items.map((item, index) => (
+        <Box
+          component="li"
+          key={`${item.title}-${index}`}
+          sx={{
+            marginBottom: index === items.length - 1 ? 0 : "8px",
+            paddingLeft: "2px",
+          }}
+        >
+          <Typography
+            component="span"
+            sx={{ color: "#2b3345", fontSize: "13px", fontWeight: 700 }}
+          >
+            {item.title}
+          </Typography>
+          {item.lines.length > 0 && (
+            <Typography
+              component="span"
+              sx={{
+                color: "#596174",
+                display: "block",
+                fontSize: "13px",
+                marginTop: "2px",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {item.lines.join("\n")}
+            </Typography>
+          )}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 function SelectFilter(props: {
   label: string;
   value: string;
@@ -966,8 +1376,12 @@ function SelectFilter(props: {
   onChange: (value: string) => void;
   optionLabel?: (value: string) => string;
   minWidth?: number;
+  includeAll?: boolean;
+  emptyLabel?: string;
+  emptyValue?: string;
 }) {
   const { t } = useI18next();
+  const emptyValue = props.emptyValue ?? "all";
   return (
     <FormControl
       size="small"
@@ -984,9 +1398,12 @@ function SelectFilter(props: {
           height: "44px",
         }}
       >
-        <MenuItem value="all">
-          {props.label}: {t("configComparison.status.all")}
-        </MenuItem>
+        {props.includeAll !== false && (
+          <MenuItem value={emptyValue}>
+            {props.emptyLabel ||
+              `${props.label}: ${t("configComparison.filters.all")}`}
+          </MenuItem>
+        )}
         {props.options.map((option) => (
           <MenuItem key={option} value={option}>
             {props.label}: {props.optionLabel?.(option) || option}
@@ -1002,6 +1419,8 @@ function ConfigComparisonTable(props: {
   fromVersion: string;
   toVersion: string;
   contentType: ContentTypeId;
+  showChangeDetails: boolean;
+  showChangeNote: boolean;
 }) {
   const { t } = useI18next();
   if (props.rows.length === 0) {
@@ -1011,6 +1430,18 @@ function ConfigComparisonTable(props: {
       </Box>
     );
   }
+  const valueColumnLabel =
+    props.contentType === "system_variables"
+      ? t("configComparison.table.default")
+      : t("configComparison.table.value");
+  const itemColumnLabel =
+    props.contentType === "system_variables"
+      ? t("configComparison.table.systemVariable")
+      : t("configComparison.table.item");
+  const tableMinWidth =
+    700 +
+    (props.showChangeDetails ? 120 : 0) +
+    (props.showChangeNote ? 140 : 0);
 
   return (
     <TableContainer
@@ -1022,7 +1453,7 @@ function ConfigComparisonTable(props: {
         overflowX: "auto",
       }}
     >
-      <Table size="small" sx={{ minWidth: 1180 }}>
+      <Table size="small" sx={{ minWidth: tableMinWidth }}>
         <TableHead>
           <TableRow
             sx={{
@@ -1036,128 +1467,454 @@ function ConfigComparisonTable(props: {
             }}
           >
             <TableCell>{t("configComparison.table.status")}</TableCell>
-            <TableCell>{t("configComparison.table.item")}</TableCell>
-            <TableCell>{t("configComparison.table.scope")}</TableCell>
-            <TableCell>{t("configComparison.table.type")}</TableCell>
+            <TableCell>{itemColumnLabel}</TableCell>
             <TableCell>
-              {t("configComparison.table.default")} ({props.fromVersion})
+              {valueColumnLabel} ({props.fromVersion})
             </TableCell>
             <TableCell>
-              {t("configComparison.table.default")} ({props.toVersion})
+              {valueColumnLabel} ({props.toVersion})
             </TableCell>
+            {props.showChangeDetails && (
+              <TableCell>{t("configComparison.table.changeDetails")}</TableCell>
+            )}
             <TableCell>{t("configComparison.table.deprecated")}</TableCell>
-            <TableCell>{t("configComparison.table.changeNote")}</TableCell>
+            {props.showChangeNote && (
+              <TableCell>{t("configComparison.table.changeNote")}</TableCell>
+            )}
             <TableCell>{t("configComparison.table.source")}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {props.rows.map((row) => (
-            <TableRow
-              hover
-              key={`${row.content_type}-${row.item_key}`}
-              sx={{
-                "& .MuiTableCell-root": {
-                  borderColor: "#e8edf5",
-                  paddingBottom: "14px",
-                  paddingTop: "14px",
-                },
-              }}
-            >
-              <TableCell>
-                <StatusChip status={row.status} />
-              </TableCell>
-              <TableCell sx={{ fontFamily: "monospace", fontSize: "13px" }}>
-                {row.item_key}
-              </TableCell>
-              <TableCell
-                sx={{ color: "#596174", fontSize: "13px", maxWidth: 160 }}
-              >
-                {row.scope || "-"}
-              </TableCell>
-              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
-                {row.value_type || "-"}
-              </TableCell>
-              <TableCell
+          {props.rows.map((row) => {
+            const valueChanged = hasDisplayedValueChange(
+              row,
+              props.contentType
+            );
+            return (
+              <TableRow
+                hover
+                key={`${row.content_type}-${row.item_key}`}
                 sx={{
-                  whiteSpace: "pre-wrap",
-                  color: "#596174",
-                  fontSize: "13px",
-                  maxWidth: 220,
+                  "& .MuiTableCell-root": {
+                    borderColor: "#e8edf5",
+                    paddingBottom: "14px",
+                    paddingTop: "14px",
+                  },
                 }}
               >
-                {displayValue(row.from_value)}
-              </TableCell>
-              <TableCell
-                sx={{
-                  whiteSpace: "pre-wrap",
-                  color: row.status === "modified" ? "#d45a00" : "#596174",
-                  fontSize: "13px",
-                  maxWidth: 220,
-                  fontWeight: row.status === "modified" ? 700 : 400,
-                }}
-              >
-                {displayValue(row.to_value)}
-              </TableCell>
-              <TableCell>
-                {row.is_deprecated ? (
-                  <StatusChip status="deprecated" count={undefined} />
-                ) : (
-                  <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>
-                    {t("configComparison.table.no")}
-                  </Typography>
-                )}
-                {row.deprecated_since && (
-                  <Typography
-                    sx={{
-                      color: "#7b2fd6",
-                      fontSize: "12px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {row.deprecated_since}
-                  </Typography>
-                )}
-              </TableCell>
-              <TableCell
-                sx={{
-                  color: "#596174",
-                  fontSize: "13px",
-                  maxWidth: 420,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {row.change_note || "-"}
-                {row.change_note_version && row.change_note_url && (
-                  <Typography sx={{ marginTop: "6px", fontSize: "12px" }}>
-                    <Button
+                <TableCell>
+                  <ChangeTypeChips row={row} />
+                </TableCell>
+                <TableCell
+                  sx={{
+                    fontFamily: "monospace",
+                    fontSize: "13px",
+                    maxWidth: 280,
+                  }}
+                >
+                  {row.doc_link ? (
+                    <Box
                       component="a"
-                      href={row.change_note_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="small"
-                      endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                      href={row.doc_link}
                       sx={{
-                        color: "#2f5bff",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        minWidth: 0,
-                        padding: 0,
-                        textTransform: "none",
+                        color: "var(--tiui-palette-secondary)",
+                        overflowWrap: "anywhere",
+                        textDecoration: "none",
+                        "&:hover": {
+                          textDecoration: "underline",
+                        },
                       }}
                     >
-                      {row.change_note_version}
-                    </Button>
-                  </Typography>
+                      {row.item_key}
+                    </Box>
+                  ) : (
+                    row.item_key
+                  )}
+                </TableCell>
+                <TableCell
+                  sx={{
+                    whiteSpace: "pre-wrap",
+                    color: "#596174",
+                    fontSize: "13px",
+                    maxWidth: 220,
+                  }}
+                >
+                  {displayValue(row.from_value)}
+                </TableCell>
+                <TableCell
+                  sx={{
+                    whiteSpace: "pre-wrap",
+                    color: valueChanged ? "#d45a00" : "#596174",
+                    fontSize: "13px",
+                    maxWidth: 220,
+                    fontWeight: valueChanged ? 700 : 400,
+                  }}
+                >
+                  {displayValue(row.to_value)}
+                </TableCell>
+                {props.showChangeDetails && (
+                  <TableCell
+                    sx={{
+                      color: "#596174",
+                      fontSize: "13px",
+                      maxWidth: 320,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    <ChangeDetailList row={row} />
+                  </TableCell>
                 )}
-              </TableCell>
-              <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
-                {row.source}
-              </TableCell>
-            </TableRow>
-          ))}
+                <TableCell>
+                  {row.is_deprecated ? (
+                    <StatusChip status="deprecated" count={undefined} />
+                  ) : (
+                    <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>
+                      {t("configComparison.table.no")}
+                    </Typography>
+                  )}
+                  {row.deprecated_since && (
+                    <Typography
+                      sx={{
+                        color: "#7b2fd6",
+                        fontSize: "12px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {row.deprecated_since}
+                    </Typography>
+                  )}
+                </TableCell>
+                {props.showChangeNote && (
+                  <TableCell
+                    sx={{
+                      color: "#596174",
+                      fontSize: "13px",
+                      maxWidth: 420,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {row.change_note || "-"}
+                    {row.change_note_version && row.change_note_url && (
+                      <Typography sx={{ marginTop: "6px", fontSize: "12px" }}>
+                        <Button
+                          component="a"
+                          href={row.change_note_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          size="small"
+                          endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                          sx={{
+                            color: "var(--tiui-palette-secondary)",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            minWidth: 0,
+                            padding: 0,
+                            textTransform: "none",
+                          }}
+                        >
+                          {row.change_note_version}
+                        </Button>
+                      </Typography>
+                    )}
+                  </TableCell>
+                )}
+                <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
+                  {row.source}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>
+  );
+}
+
+function EmptyComparisonIllustration() {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        alignItems: "center",
+        display: "flex",
+        height: { xs: 220, md: 250 },
+        justifyContent: "center",
+        minWidth: { xs: "100%", md: 320 },
+      }}
+    >
+      <Box
+        component="svg"
+        viewBox="0 0 300 240"
+        sx={{
+          height: { xs: 250, md: 280 },
+          width: { xs: 320, md: 350 },
+        }}
+        role="img"
+      >
+        <defs>
+          <filter
+            id="comparison-card-shadow"
+            x="-35%"
+            y="-25%"
+            width="170%"
+            height="160%"
+          >
+            <feDropShadow
+              dx="0"
+              dy="10"
+              floodColor="#1f2430"
+              floodOpacity="0.08"
+              stdDeviation="12"
+            />
+          </filter>
+        </defs>
+
+        <circle
+          cx="150"
+          cy="120"
+          fill="none"
+          r="102"
+          stroke="#6f7f99"
+          strokeDasharray="4 9"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M268 111V122"
+          fill="none"
+          stroke="#6f7f99"
+          strokeDasharray="3 8"
+          strokeWidth="2"
+        />
+        <path
+          d="M30 116V126"
+          fill="none"
+          stroke="#d8e0ea"
+          strokeDasharray="3 8"
+          strokeWidth="2"
+        />
+
+        <g filter="url(#comparison-card-shadow)">
+          <rect
+            fill="#fff"
+            height="126"
+            rx="9"
+            stroke="#b8cafa"
+            strokeWidth="1.5"
+            width="82"
+            x="48"
+            y="62"
+          />
+          <path
+            d="M57 62H121C125.971 62 130 66.029 130 71V91H48V71C48 66.029 52.029 62 57 62Z"
+            fill="#c8d8ff"
+          />
+          {[0, 1, 2, 3, 4].map((line) => (
+            <g key={`left-${line}`} transform={`translate(0 ${line * 18})`}>
+              <circle cx="66" cy="109" fill="#6f7a8f" r="3.2" />
+              <rect
+                fill="#dfe5ee"
+                height="5"
+                rx="2.5"
+                width={line === 4 ? 34 : 42}
+                x="82"
+                y="106.5"
+              />
+            </g>
+          ))}
+        </g>
+
+        <g filter="url(#comparison-card-shadow)">
+          <rect
+            fill="#fff"
+            height="126"
+            rx="9"
+            stroke="#d7ddd9"
+            strokeWidth="1.5"
+            width="82"
+            x="170"
+            y="62"
+          />
+          <path
+            d="M179 62H243C247.971 62 252 66.029 252 71V91H170V71C170 66.029 174.029 62 179 62Z"
+            fill="#cfeee1"
+          />
+          {[0, 1, 2, 3, 4].map((line) => (
+            <g key={`right-${line}`} transform={`translate(0 ${line * 18})`}>
+              <circle cx="188" cy="109" fill="#6f7a8f" r="3.2" />
+              <rect
+                fill="#dfe5ee"
+                height="5"
+                rx="2.5"
+                width={line === 4 ? 34 : 42}
+                x="204"
+                y="106.5"
+              />
+            </g>
+          ))}
+        </g>
+
+        <path
+          d="M138 113H160"
+          fill="none"
+          stroke="#2d86ff"
+          strokeLinecap="round"
+          strokeWidth="2.5"
+        />
+        <path
+          d="M152 105L162 113L152 121"
+          fill="none"
+          stroke="#2d86ff"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.5"
+        />
+        <path
+          d="M162 143H140"
+          fill="none"
+          stroke="#33bc84"
+          strokeLinecap="round"
+          strokeWidth="2.5"
+        />
+        <path
+          d="M148 135L138 143L148 151"
+          fill="none"
+          stroke="#33bc84"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.5"
+        />
+
+        <g fill="none" strokeLinecap="round" strokeWidth="2.5">
+          <path d="M265 43V57" stroke="#cbd6e4" />
+          <path d="M258 50H272" stroke="#cbd6e4" />
+          <path d="M26 167V181" stroke="#50a58d" />
+          <path d="M19 174H33" stroke="#50a58d" />
+          <path d="M41 45L47 51" stroke="#e8f3ff" />
+          <path d="M47 45L41 51" stroke="#e8f3ff" />
+          <path d="M35 200V212" stroke="#ffcc74" />
+          <path d="M29 206H41" stroke="#ffcc74" />
+          <path d="M270 190V202" stroke="#cbd6e4" />
+          <path d="M264 196H276" stroke="#cbd6e4" />
+        </g>
+        <circle
+          cx="249"
+          cy="220"
+          fill="none"
+          r="5"
+          stroke="#56c493"
+          strokeWidth="2.5"
+        />
+      </Box>
+    </Box>
+  );
+}
+
+function DefaultComparisonState(props: {
+  popularComparisons: PopularComparison[];
+  onSelectPopularComparison: (comparison: PopularComparison) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        borderColor: "#dfe5ef",
+        borderRadius: "8px",
+        marginBottom: 3,
+        padding: { xs: 3, md: 4 },
+      }}
+    >
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={{ xs: 2, md: 5 }}
+        alignItems="center"
+      >
+        <EmptyComparisonIllustration />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            sx={{
+              color: "#1f2430",
+              fontSize: { xs: "22px", md: "26px" },
+              fontWeight: 700,
+              marginBottom: 1.5,
+            }}
+          >
+            {props.t("configComparison.defaultState.title")}
+          </Typography>
+          <Typography sx={{ color: "#596174", marginBottom: 1 }}>
+            {props.t("configComparison.defaultState.description")}
+          </Typography>
+          <Typography sx={{ color: "#596174", marginBottom: 3 }}>
+            {props.t("configComparison.defaultState.details")}
+          </Typography>
+          {props.popularComparisons.length > 0 && (
+            <Box
+              sx={{
+                borderTop: "1px solid #e5eaf2",
+                paddingTop: 2,
+              }}
+            >
+              <Typography
+                sx={{
+                  color: "#1f2430",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  marginBottom: 1,
+                }}
+              >
+                {props.t("configComparison.defaultState.popularComparisons")}
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                {props.popularComparisons.map((comparison) => (
+                  <Button
+                    key={`${comparison.from}-${comparison.to}`}
+                    variant="outlined"
+                    onClick={() => props.onSelectPopularComparison(comparison)}
+                    sx={{
+                      borderColor: "var(--tiui-palette-secondary-light)",
+                      color: "var(--tiui-palette-secondary)",
+                      fontWeight: 700,
+                      minWidth: 0,
+                      textTransform: "none",
+                      "&:hover": {
+                        backgroundColor: "var(--tiui-palette-peacock-50)",
+                        borderColor: "var(--tiui-palette-secondary)",
+                      },
+                    }}
+                  >
+                    {comparison.from} -&gt; {comparison.to}
+                  </Button>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </Box>
+      </Stack>
+    </Paper>
+  );
+}
+
+function ConfigComparisonInfoNote(props: { message: string }) {
+  return (
+    <Stack
+      direction="row"
+      spacing={1}
+      alignItems="center"
+      sx={{
+        backgroundColor: "var(--tiui-palette-peacock-50)",
+        border: "1px solid var(--tiui-palette-secondary-light)",
+        borderRadius: "6px",
+        color: "#596174",
+        marginTop: 2,
+        padding: "12px 16px",
+      }}
+    >
+      <InfoOutlinedIcon
+        sx={{ color: "var(--tiui-palette-secondary)", fontSize: 18 }}
+      />
+      <Typography sx={{ fontSize: "14px" }}>{props.message}</Typography>
+    </Stack>
   );
 }
 
@@ -1170,9 +1927,8 @@ export default function ConfigComparison() {
   const [toVersion, setToVersion] = React.useState("");
   const [contentType, setContentType] =
     React.useState<ContentTypeId>("system_variables");
-  const [filterStatus, setFilterStatus] = React.useState<FilterStatus>("all");
-  const [scopeFilter, setScopeFilter] = React.useState<FieldFilter>("all");
-  const [typeFilter, setTypeFilter] = React.useState<FieldFilter>("all");
+  const [filterStatus, setFilterStatus] =
+    React.useState<FilterStatus>("changed");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -1198,32 +1954,85 @@ export default function ConfigComparison() {
     };
   }, [loadAttempt]);
 
+  const orderedVersions = React.useMemo(
+    () => (dataset ? sortedVersionsByReleaseDate(dataset.versions) : []),
+    [dataset]
+  );
+  const versionOrder = React.useMemo(
+    () => buildVersionOrder(orderedVersions),
+    [orderedVersions]
+  );
+
   React.useEffect(() => {
     if (!dataset) {
       return;
     }
 
-    const versions = dataset.versions.map((version) => version.version);
+    const fromOptions = orderedVersions.slice(0, -1);
+    const allVersions = orderedVersions.map((version) => version.version);
+    const defaultToVersion =
+      orderedVersions[orderedVersions.length - 1]?.version || "";
     setFromVersion((current) =>
-      versions.includes(current) ? current : versions[0]
+      current === "" ||
+      fromOptions.some((version) => version.version === current)
+        ? current
+        : ""
     );
     setToVersion((current) =>
-      versions.includes(current) ? current : versions[versions.length - 1]
+      allVersions.includes(current) ? current : defaultToVersion
     );
     setContentType((current) =>
       dataset.contentTypes.some((item) => item.id === current)
         ? current
         : dataset.contentTypes[0].id
     );
-  }, [dataset]);
+  }, [dataset, orderedVersions]);
 
   const releaseEventsByItem = React.useMemo(
     () => (dataset ? buildReleaseEventMap(dataset) : null),
     [dataset]
   );
 
+  const fromVersionOptions = React.useMemo(
+    () => orderedVersions.slice(0, -1),
+    [orderedVersions]
+  );
+  const toVersionOptions = React.useMemo(
+    () =>
+      fromVersion
+        ? orderedVersions.filter(
+            (version) =>
+              compareVersionByOrder(
+                fromVersion,
+                version.version,
+                versionOrder
+              ) < 0
+          )
+        : orderedVersions,
+    [fromVersion, orderedVersions, versionOrder]
+  );
+
+  React.useEffect(() => {
+    if (!fromVersion || toVersionOptions.length === 0) {
+      return;
+    }
+    setToVersion((current) =>
+      toVersionOptions.some((version) => version.version === current)
+        ? current
+        : toVersionOptions[toVersionOptions.length - 1].version
+    );
+  }, [fromVersion, toVersionOptions]);
+
+  const popularComparisons = React.useMemo(
+    () => buildPopularComparisons(orderedVersions),
+    [orderedVersions]
+  );
+
   const comparison = React.useMemo(() => {
     if (!dataset || !releaseEventsByItem || !fromVersion || !toVersion) {
+      return null;
+    }
+    if (compareVersionByOrder(fromVersion, toVersion, versionOrder) >= 0) {
       return null;
     }
     return compare(
@@ -1233,55 +2042,37 @@ export default function ConfigComparison() {
       toVersion,
       contentType
     );
-  }, [dataset, releaseEventsByItem, fromVersion, toVersion, contentType]);
+  }, [
+    dataset,
+    releaseEventsByItem,
+    fromVersion,
+    toVersion,
+    versionOrder,
+    contentType,
+  ]);
 
   const filteredRows = React.useMemo(() => {
     if (!comparison) {
       return [];
     }
     return comparison.rows.filter(
-      (row) =>
-        matchesFilter(row, filterStatus) &&
-        matchesFieldFilter(row.scope, scopeFilter) &&
-        matchesFieldFilter(row.value_type, typeFilter) &&
-        matchesSearch(row, search)
+      (row) => matchesFilter(row, filterStatus) && matchesSearch(row, search)
     );
-  }, [comparison, filterStatus, scopeFilter, search, typeFilter]);
-
-  const scopeOptions = React.useMemo(
-    () =>
-      comparison ? uniqueFilterValues(comparison.rows, (row) => row.scope) : [],
-    [comparison]
-  );
-  const typeOptions = React.useMemo(
-    () =>
-      comparison
-        ? uniqueFilterValues(comparison.rows, (row) => row.value_type)
-        : [],
-    [comparison]
-  );
+  }, [comparison, filterStatus, search]);
   const visibleRows = filteredRows.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
+  const showChangeDetails =
+    filterStatus !== "new" && filterStatus !== "removed";
+  const showChangeNote = filterStatus !== "new";
 
   React.useEffect(() => {
     setPage(0);
-  }, [
-    fromVersion,
-    toVersion,
-    contentType,
-    filterStatus,
-    scopeFilter,
-    typeFilter,
-    search,
-    rowsPerPage,
-  ]);
+  }, [fromVersion, toVersion, contentType, filterStatus, search, rowsPerPage]);
 
   React.useEffect(() => {
-    setFilterStatus("all");
-    setScopeFilter("all");
-    setTypeFilter("all");
+    setFilterStatus("changed");
   }, [fromVersion, toVersion, contentType]);
 
   if (error) {
@@ -1307,7 +2098,7 @@ export default function ConfigComparison() {
     );
   }
 
-  if (!dataset || !comparison) {
+  if (!dataset) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", padding: "96px" }}>
         <CircularProgress size={32} />
@@ -1315,12 +2106,16 @@ export default function ConfigComparison() {
     );
   }
 
-  const versions = dataset.versions;
-  const summary = comparison.summary;
+  const hasComparison = !!comparison;
+  const summary = comparison?.summary || createEmptySummary();
   const versionLabel = (version: VersionInfo) =>
     `${version.version}${
       version.release_date ? ` (${version.release_date})` : ""
     }`;
+  const versionLabelByValue = (value: string) => {
+    const version = orderedVersions.find((item) => item.version === value);
+    return version ? versionLabel(version) : value;
+  };
   const summarySuffix =
     contentType === "system_variables"
       ? t("configComparison.suffix.variables")
@@ -1331,6 +2126,13 @@ export default function ConfigComparison() {
       : t("configComparison.searchConfigPlaceholder");
   const handleStatusChange = (status: FilterStatus) => {
     setFilterStatus(status);
+    setPage(0);
+  };
+  const handlePopularComparison = (selectedComparison: PopularComparison) => {
+    setFromVersion(selectedComparison.from);
+    setToVersion(selectedComparison.to);
+    setFilterStatus("changed");
+    setSearch("");
     setPage(0);
   };
 
@@ -1346,16 +2148,13 @@ export default function ConfigComparison() {
           <Typography
             component="h1"
             sx={{
-              color: "#1f2430",
-              fontSize: { xs: "32px", md: "44px" },
-              fontWeight: 700,
-              lineHeight: 1.1,
+              color: "var(--tiui-palette-carbon-900)",
+              fontSize: "2.5rem",
+              fontWeight: 400,
+              lineHeight: "3.75rem",
             }}
           >
             {t("configComparison.title")}
-          </Typography>
-          <Typography sx={{ marginTop: 1, color: "#687083", fontSize: "16px" }}>
-            {t("configComparison.description")}
           </Typography>
         </Box>
       </Stack>
@@ -1363,19 +2162,40 @@ export default function ConfigComparison() {
       <Paper
         variant="outlined"
         sx={{
+          backgroundColor: "#fff",
           borderColor: "#dfe5ef",
           borderRadius: "8px",
           marginBottom: 3,
-          padding: { xs: 2, md: 3 },
+          padding: { xs: 2, md: "20px 24px 24px" },
         }}
       >
-        <Grid container spacing={3} alignItems="center">
-          <Grid item xs={12} md={5}>
-            <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
-              {t("configComparison.selectVersions")}
+        <Stack
+          direction={{ xs: "column", lg: "row" }}
+          spacing={{ xs: 2, lg: 2.5 }}
+          alignItems="stretch"
+        >
+          <Box
+            sx={{
+              flex: { lg: "0 0 44%" },
+              minWidth: 0,
+            }}
+          >
+            <Typography
+              sx={{
+                color: "#1f2430",
+                fontSize: "16px",
+                fontWeight: 700,
+                marginBottom: 2,
+              }}
+            >
+              {t("configComparison.selectVersionsAndContent")}
             </Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Box sx={{ flex: 1 }}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={{ xs: 1.5, sm: 2 }}
+              alignItems={{ xs: "stretch", sm: "flex-end" }}
+            >
+              <Box sx={{ flex: 1, minWidth: { sm: 0 } }}>
                 <Typography
                   sx={{
                     color: "#687083",
@@ -1387,11 +2207,33 @@ export default function ConfigComparison() {
                 </Typography>
                 <FormControl fullWidth size="small">
                   <Select
+                    displayEmpty
                     value={fromVersion}
+                    renderValue={(selected) =>
+                      selected
+                        ? versionLabelByValue(String(selected))
+                        : t("configComparison.selectSourceVersion")
+                    }
                     onChange={(event) => setFromVersion(event.target.value)}
-                    sx={{ height: "44px" }}
+                    sx={{
+                      backgroundColor: "#fff",
+                      height: "44px",
+                      ...(fromVersion ? {} : { color: "#8791a5" }),
+                      "& .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "#dbe1ec",
+                      },
+                      "&:hover .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "#c7d1e0",
+                      },
+                      "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "var(--tiui-palette-secondary-light)",
+                      },
+                    }}
                   >
-                    {versions.map((version) => (
+                    <MenuItem value="" disabled>
+                      {t("configComparison.selectSourceVersion")}
+                    </MenuItem>
+                    {fromVersionOptions.map((version) => (
                       <MenuItem value={version.version} key={version.version}>
                         {versionLabel(version)}
                       </MenuItem>
@@ -1399,18 +2241,20 @@ export default function ConfigComparison() {
                   </Select>
                 </FormControl>
               </Box>
-              <Tooltip title={t("configComparison.swapVersions")}>
-                <IconButton
-                  aria-label={t("configComparison.swapVersions")}
-                  onClick={() => {
-                    setFromVersion(toVersion);
-                    setToVersion(fromVersion);
-                  }}
-                >
-                  <SwapHorizIcon />
-                </IconButton>
-              </Tooltip>
-              <Box sx={{ flex: 1 }}>
+              <Typography
+                aria-hidden
+                sx={{
+                  alignItems: "center",
+                  color: "#8a94a6",
+                  display: { xs: "none", sm: "flex" },
+                  height: "44px",
+                  justifyContent: "center",
+                  width: "32px",
+                }}
+              >
+                <SwapHorizIcon fontSize="small" />
+              </Typography>
+              <Box sx={{ flex: 1, minWidth: { sm: 0 } }}>
                 <Typography
                   sx={{
                     color: "#687083",
@@ -1423,10 +2267,25 @@ export default function ConfigComparison() {
                 <FormControl fullWidth size="small">
                   <Select
                     value={toVersion}
+                    renderValue={(selected) =>
+                      selected ? versionLabelByValue(String(selected)) : ""
+                    }
                     onChange={(event) => setToVersion(event.target.value)}
-                    sx={{ height: "44px" }}
+                    sx={{
+                      backgroundColor: "#fff",
+                      height: "44px",
+                      "& .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "#dbe1ec",
+                      },
+                      "&:hover .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "#c7d1e0",
+                      },
+                      "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "var(--tiui-palette-secondary-light)",
+                      },
+                    }}
                   >
-                    {versions.map((version) => (
+                    {toVersionOptions.map((version) => (
                       <MenuItem value={version.version} key={version.version}>
                         {versionLabel(version)}
                       </MenuItem>
@@ -1435,160 +2294,190 @@ export default function ConfigComparison() {
                 </FormControl>
               </Box>
             </Stack>
-          </Grid>
-          <Grid
-            item
-            xs={12}
-            md={7}
+          </Box>
+          <Divider
+            flexItem
+            orientation="vertical"
             sx={{
-              borderLeft: { xs: "none", md: "1px solid #e4e8f0" },
-              paddingLeft: { md: "32px !important" },
+              borderColor: "#e5eaf2",
+              display: { xs: "none", lg: "block" },
             }}
-          >
-            <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
-              {t("configComparison.selectContent")}
-            </Typography>
-            <ToggleButtonGroup
-              exclusive
-              value={contentType}
-              onChange={(_, value) => value && setContentType(value)}
+          />
+          <Divider
+            sx={{
+              borderColor: "#e5eaf2",
+              display: { xs: "block", lg: "none" },
+            }}
+          />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box
               sx={{
-                flexWrap: "wrap",
-                "& .MuiToggleButtonGroup-grouped": {
-                  border: "1px solid #dbe1ec !important",
-                  margin: 0,
-                  textTransform: "none",
-                  padding: "10px 18px",
-                  "&.Mui-selected": {
-                    backgroundColor: "#f4f7ff",
-                    borderColor: "#7aa0ff !important",
-                    color: "#2f5bff",
-                    fontWeight: 700,
+                display: "flex",
+                flexDirection: "column",
+                height: "100%",
+                justifyContent: { xs: "flex-start", lg: "flex-end" },
+              }}
+            >
+              <Typography
+                sx={{
+                  color: "#687083",
+                  fontSize: "13px",
+                  marginBottom: "6px",
+                }}
+              >
+                {t("configComparison.comparisonObject")}
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                value={contentType}
+                onChange={(_, value) => value && setContentType(value)}
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  "& .MuiToggleButtonGroup-grouped": {
+                    backgroundColor: "#fff",
+                    border: "1px solid #dbe1ec !important",
+                    color: "#596174",
+                    margin: 0,
+                    minHeight: "44px",
+                    minWidth: { xs: "50%", sm: "auto" },
+                    textTransform: "none",
+                    padding: "10px 18px",
+                    whiteSpace: "nowrap",
+                    "&:hover": {
+                      backgroundColor: "var(--tiui-palette-peacock-50)",
+                    },
+                    "&.Mui-selected": {
+                      backgroundColor: "var(--tiui-palette-peacock-100)",
+                      borderColor:
+                        "var(--tiui-palette-secondary-light) !important",
+                      color: "var(--tiui-palette-secondary)",
+                      fontWeight: 700,
+                      "&:hover": {
+                        backgroundColor: "var(--tiui-palette-peacock-200)",
+                      },
+                    },
                   },
+                }}
+              >
+                {dataset.contentTypes.map((item) => (
+                  <ToggleButton value={item.id} key={item.id}>
+                    {item.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Box>
+          </Box>
+        </Stack>
+      </Paper>
+
+      {hasComparison ? (
+        <>
+          <SummaryPanel
+            summary={summary}
+            suffix={summarySuffix}
+            activeStatus={filterStatus}
+            onStatusChange={handleStatusChange}
+          />
+
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={2}
+            alignItems={{ xs: "stretch", md: "center" }}
+            sx={{ flexWrap: "wrap", marginBottom: 2, rowGap: 2 }}
+          >
+            <TextField
+              size="small"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={searchPlaceholder}
+              sx={{ width: { xs: "100%", md: 420 } }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: "#8791a5" }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <SelectFilter
+              label={t("configComparison.filters.status")}
+              value={filterStatus}
+              options={STATUS_FILTER_ORDER}
+              onChange={(value) => setFilterStatus(value as FilterStatus)}
+              optionLabel={(value) =>
+                t(`configComparison.status.${value as FilterStatus}`)
+              }
+              minWidth={146}
+              emptyLabel={t("configComparison.filters.status")}
+              emptyValue="changed"
+            />
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadOutlinedIcon />}
+              onClick={() =>
+                downloadCsv(
+                  filteredRows,
+                  `${fromVersion}_to_${toVersion}_${contentType}.csv`,
+                  t,
+                  showChangeNote
+                )
+              }
+              sx={{
+                borderRadius: "6px",
+                borderColor: "var(--tiui-palette-secondary)",
+                color: "var(--tiui-palette-secondary)",
+                fontWeight: 700,
+                height: "44px",
+                marginLeft: { md: "auto !important" },
+                textTransform: "none",
+                whiteSpace: "nowrap",
+                "&:hover": {
+                  backgroundColor: "var(--tiui-palette-peacock-50)",
+                  borderColor: "var(--tiui-palette-secondary-dark)",
                 },
               }}
             >
-              {dataset.contentTypes.map((item) => (
-                <ToggleButton value={item.id} key={item.id}>
-                  {item.label}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-          </Grid>
-        </Grid>
-      </Paper>
+              {t("configComparison.exportResults")}
+            </Button>
+          </Stack>
 
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        sx={{ color: "#687083", marginBottom: 3 }}
-      >
-        <InfoOutlinedIcon sx={{ color: "#8a94a6", fontSize: 18 }} />
-        <Typography sx={{ fontSize: "14px" }}>
-          {t("configComparison.info")}
-        </Typography>
-      </Stack>
-
-      <SummaryPanel
-        summary={summary}
-        suffix={summarySuffix}
-        activeStatus={filterStatus}
-        onStatusChange={handleStatusChange}
-      />
-
-      <Stack
-        direction={{ xs: "column", md: "row" }}
-        spacing={2}
-        alignItems={{ xs: "stretch", md: "center" }}
-        sx={{ flexWrap: "wrap", marginBottom: 2, rowGap: 2 }}
-      >
-        <TextField
-          size="small"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={searchPlaceholder}
-          sx={{ width: { xs: "100%", md: 420 } }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ color: "#8791a5" }} />
-              </InputAdornment>
-            ),
-          }}
+          <ConfigComparisonTable
+            rows={visibleRows}
+            fromVersion={fromVersion}
+            toVersion={toVersion}
+            contentType={contentType}
+            showChangeDetails={showChangeDetails}
+            showChangeNote={showChangeNote}
+          />
+          <TablePagination
+            component="div"
+            count={filteredRows.length}
+            page={page}
+            labelDisplayedRows={({ from, to, count }) =>
+              formatTemplate(t("configComparison.pagination"), {
+                count: count.toLocaleString(),
+                from,
+                suffix: summarySuffix,
+                to,
+              })
+            }
+            onPageChange={(_, nextPage) => setPage(nextPage)}
+            rowsPerPage={rowsPerPage}
+            rowsPerPageOptions={[10, 25, 50]}
+            onRowsPerPageChange={(event) =>
+              setRowsPerPage(Number(event.target.value))
+            }
+          />
+        </>
+      ) : (
+        <DefaultComparisonState
+          popularComparisons={popularComparisons}
+          onSelectPopularComparison={handlePopularComparison}
+          t={t}
         />
-        <SelectFilter
-          label={t("configComparison.filters.status")}
-          value={filterStatus}
-          options={STATUS_ORDER.filter((status) => status !== "all")}
-          onChange={(value) => setFilterStatus(value as FilterStatus)}
-          optionLabel={(value) =>
-            t(`configComparison.status.${value as FilterStatus}`)
-          }
-          minWidth={146}
-        />
-        <SelectFilter
-          label={t("configComparison.filters.scope")}
-          value={scopeFilter}
-          options={scopeOptions}
-          onChange={setScopeFilter}
-          minWidth={146}
-        />
-        <SelectFilter
-          label={t("configComparison.filters.type")}
-          value={typeFilter}
-          options={typeOptions}
-          onChange={setTypeFilter}
-          minWidth={132}
-        />
-        <Button
-          variant="outlined"
-          startIcon={<FileDownloadOutlinedIcon />}
-          onClick={() =>
-            downloadCsv(
-              filteredRows,
-              `${fromVersion}_to_${toVersion}_${contentType}.csv`
-            )
-          }
-          sx={{
-            borderRadius: "6px",
-            color: "#2f5bff",
-            fontWeight: 700,
-            height: "44px",
-            marginLeft: { md: "auto !important" },
-            textTransform: "none",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {t("configComparison.exportResults")}
-        </Button>
-      </Stack>
-
-      <ConfigComparisonTable
-        rows={visibleRows}
-        fromVersion={fromVersion}
-        toVersion={toVersion}
-        contentType={contentType}
-      />
-      <TablePagination
-        component="div"
-        count={filteredRows.length}
-        page={page}
-        labelDisplayedRows={({ from, to, count }) =>
-          t("configComparison.pagination", {
-            count: count.toLocaleString(),
-            from,
-            suffix: summarySuffix,
-            to,
-          })
-        }
-        onPageChange={(_, nextPage) => setPage(nextPage)}
-        rowsPerPage={rowsPerPage}
-        rowsPerPageOptions={[10, 25, 50]}
-        onRowsPerPageChange={(event) =>
-          setRowsPerPage(Number(event.target.value))
-        }
-      />
+      )}
+      <ConfigComparisonInfoNote message={t("configComparison.info")} />
     </Box>
   );
 }

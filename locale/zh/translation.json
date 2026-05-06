@@ -55,27 +55,35 @@
     "bingSearch": "Bing 搜索"
   },
   "configComparison": {
-    "title": "配置对比",
+    "title": "TiDB 配置对比工具",
     "description": "对比不同 TiDB 版本中的系统变量和组件配置。",
-    "selectVersions": "选择版本",
+    "selectVersions": "选择 TiDB 版本",
+    "selectVersionsAndContent": "选择 TiDB 版本和对比对象",
     "from": "源版本",
+    "fromVersion": "源版本",
     "to": "目标版本",
+    "toVersion": "目标版本",
     "swapVersions": "交换版本",
-    "selectContent": "选择内容",
-    "info": "状态根据新部署的 TiDB 集群采集数据计算，变更说明来自 release notes。",
+    "selectContent": "选择对比对象",
+    "comparisonObject": "对比对象",
+    "content": "对比对象",
+    "selectSourceVersion": "选择当前版本",
+    "info": "变更类型根据新部署的 TiDB 集群采集数据计算，变更说明来自 release notes。",
     "exportResults": "导出结果",
     "noMatchingItems": "无匹配项",
     "retry": "重试",
     "loadFailed": "加载配置对比数据失败。",
-    "searchVariablePlaceholder": "按变量名、值或变更说明搜索...",
-    "searchConfigPlaceholder": "按配置项名、值或变更说明搜索...",
+    "searchVariablePlaceholder": "按变量名搜索...",
+    "searchConfigPlaceholder": "按配置项名搜索...",
     "filters": {
-      "status": "状态",
+      "all": "全部",
+      "status": "变更类型",
       "scope": "作用域",
       "type": "类型"
     },
     "status": {
       "all": "全部",
+      "changed": "有变化",
       "new": "新增",
       "removed": "已移除",
       "modified": "已修改",
@@ -83,19 +91,52 @@
       "unchanged": "未变化"
     },
     "table": {
-      "status": "状态",
+      "status": "变更类型",
       "item": "配置项",
+      "systemVariable": "系统变量",
       "scope": "作用域",
       "type": "类型",
       "default": "默认值",
+      "value": "值",
+      "changeDetails": "变更详情",
       "deprecated": "废弃状态",
       "changeNote": "变更说明",
       "source": "来源",
       "no": "否"
     },
+    "changeFields": {
+      "scope": "作用域",
+      "defaultValue": "默认值",
+      "minValue": "最小值",
+      "maxValue": "最大值",
+      "possibleValues": "可选值",
+      "persistsToCluster": "持久化到集群",
+      "docType": "类型",
+      "docRange": "取值范围",
+      "isNoop": "是否无效",
+      "purpose": "用途",
+      "value": "值"
+    },
+    "changeItems": {
+      "defaultValue": "默认值变更",
+      "scope": "作用域变更",
+      "type": "类型变更",
+      "range": "取值范围变更",
+      "possibleValues": "可选值变更",
+      "persistsToCluster": "持久化到集群变更",
+      "isNoop": "是否无效变更",
+      "purpose": "用途变更",
+      "value": "值变更"
+    },
     "suffix": {
       "variables": "个变量",
       "items": "个配置项"
+    },
+    "defaultState": {
+      "title": "先选择一个源 TiDB 版本",
+      "description": "选择正在使用或准备升级的源版本，再与最新 GA 版本或其他目标版本对比。",
+      "details": "选择源版本后，结果会展示新增、移除、修改、废弃以及行为变化的变量和配置项。",
+      "popularComparisons": "常用对比"
     },
     "pagination": "显示第 {{from}} 到 {{to}} 条，共 {{count}} {{suffix}}"
   },

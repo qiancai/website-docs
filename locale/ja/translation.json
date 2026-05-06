@@ -54,27 +54,35 @@
     "learningCenter": "Learning Center"
   },
   "configComparison": {
-    "title": "構成比較",
+    "title": "TiDB 構成比較ツール",
     "description": "選択した TiDB バージョン間でシステム変数とコンポーネント構成を比較します。",
-    "selectVersions": "バージョンを選択",
+    "selectVersions": "TiDB バージョンを選択",
+    "selectVersionsAndContent": "TiDB バージョンと比較対象を選択",
     "from": "比較元",
+    "fromVersion": "比較元バージョン",
     "to": "比較先",
+    "toVersion": "比較先バージョン",
     "swapVersions": "バージョンを入れ替え",
-    "selectContent": "内容を選択",
-    "info": "ステータスは新規にデプロイした TiDB クラスターの収集データから計算され、変更メモはリリースノートから取得されます。",
+    "selectContent": "比較対象を選択",
+    "comparisonObject": "比較対象",
+    "content": "比較対象",
+    "selectSourceVersion": "現在のバージョンを選択",
+    "info": "変更タイプは新規にデプロイした TiDB クラスターの収集データから計算され、変更メモはリリースノートから取得されます。",
     "exportResults": "結果をエクスポート",
     "noMatchingItems": "一致する項目はありません",
     "retry": "再試行",
     "loadFailed": "構成比較データを読み込めませんでした。",
-    "searchVariablePlaceholder": "変数名、値、変更メモで検索...",
-    "searchConfigPlaceholder": "構成名、値、変更メモで検索...",
+    "searchVariablePlaceholder": "変数名で検索...",
+    "searchConfigPlaceholder": "構成名で検索...",
     "filters": {
-      "status": "ステータス",
+      "all": "すべて",
+      "status": "変更タイプ",
       "scope": "スコープ",
       "type": "タイプ"
     },
     "status": {
       "all": "すべて",
+      "changed": "変更あり",
       "new": "新規",
       "removed": "削除済み",
       "modified": "変更済み",
@@ -82,19 +90,52 @@
       "unchanged": "変更なし"
     },
     "table": {
-      "status": "ステータス",
+      "status": "変更タイプ",
       "item": "項目",
+      "systemVariable": "システム変数",
       "scope": "スコープ",
       "type": "タイプ",
-      "default": "デフォルト",
+      "default": "デフォルト値",
+      "value": "値",
+      "changeDetails": "変更詳細",
       "deprecated": "非推奨",
       "changeNote": "変更メモ",
       "source": "ソース",
       "no": "いいえ"
     },
+    "changeFields": {
+      "scope": "スコープ",
+      "defaultValue": "デフォルト値",
+      "minValue": "最小値",
+      "maxValue": "最大値",
+      "possibleValues": "指定可能な値",
+      "persistsToCluster": "クラスタに永続化",
+      "docType": "タイプ",
+      "docRange": "範囲",
+      "isNoop": "No-op",
+      "purpose": "用途",
+      "value": "値"
+    },
+    "changeItems": {
+      "defaultValue": "デフォルト値の変更",
+      "scope": "スコープの変更",
+      "type": "タイプの変更",
+      "range": "範囲の変更",
+      "possibleValues": "指定可能な値の変更",
+      "persistsToCluster": "クラスタ永続化の変更",
+      "isNoop": "No-op の変更",
+      "purpose": "用途の変更",
+      "value": "値の変更"
+    },
     "suffix": {
       "variables": "個の変数",
       "items": "個の項目"
+    },
+    "defaultState": {
+      "title": "比較元の TiDB バージョンを選択してください",
+      "description": "アップグレード元のバージョンを選択し、最新の GA バージョンまたは別の対象バージョンと比較します。",
+      "details": "比較元を選択すると、新規、削除済み、変更済み、非推奨、動作変更のある項目が表示されます。",
+      "popularComparisons": "よく使う比較"
     },
     "pagination": "{{count}} {{suffix}}中 {{from}} から {{to}} を表示"
   },
