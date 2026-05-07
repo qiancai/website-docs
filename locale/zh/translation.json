@@ -40,6 +40,7 @@
     "tiupReleases": "TiUP 版本发布记录",
     "configComparison": "配置对比",
     "badge": {
+      "beta": "BETA",
       "preview": "Preview",
       "new": "新增"
     },
@@ -56,7 +57,7 @@
   },
   "configComparison": {
     "title": "TiDB 配置对比工具",
-    "description": "对比不同 TiDB 版本中的系统变量和组件配置。",
+    "description": "对比不同 TiDB 版本中的系统变量和组件配置项，识别新增、移除、修改和废弃的内容。",
     "selectVersions": "选择 TiDB 版本",
     "selectVersionsAndContent": "选择 TiDB 版本和对比对象",
     "from": "源版本",
@@ -89,6 +90,9 @@
       "modified": "已修改",
       "deprecated": "已废弃",
       "unchanged": "未变化"
+    },
+    "summary": {
+      "total": "变更总数"
     },
     "table": {
       "status": "变更类型",

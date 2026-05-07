@@ -18,15 +18,22 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
+import TableSortLabel from "@mui/material/TableSortLabel";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import CopyBtn from "components/Button/CopyBtn";
+import AddBoxOutlinedIcon from "@mui/icons-material/AddBoxOutlined";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import RemoveOutlinedIcon from "@mui/icons-material/RemoveOutlined";
 import SearchIcon from "@mui/icons-material/Search";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import { useI18next } from "gatsby-plugin-react-i18next";
 
 const CONTENT_TYPE_IDS = [
@@ -41,8 +48,8 @@ type ContentTypeId = typeof CONTENT_TYPE_IDS[number];
 
 type Status = "new" | "removed" | "modified" | "unchanged";
 type FilterStatus = "changed" | "new" | "removed" | "modified" | "deprecated";
-type SummaryStatus = Exclude<FilterStatus, "changed">;
 type BadgeStatus = Status | FilterStatus;
+type SortDirection = "asc" | "desc";
 
 interface VersionInfo {
   version: string;
@@ -166,6 +173,30 @@ interface PopularComparison {
 const DATASET_URL = "/data/config-comparison/dataset.json";
 const DATASET_REQUEST_TIMEOUT_MS = 15_000;
 
+const COLORS = {
+  accent: "var(--tiui-palette-secondary)",
+  accentDark: "var(--tiui-palette-secondary-dark)",
+  accentLight: "var(--tiui-palette-peacock-400)",
+  accentSoft: "var(--tiui-palette-peacock-100)",
+  aqua: "var(--tiui-palette-aqua-900)",
+  aquaBorder: "var(--tiui-palette-aqua-500)",
+  aquaSoft: "var(--tiui-palette-aqua-100)",
+  border: "#DCE3E5",
+  borderSubtle: "#E4E4E7",
+  graphicMuted: "#C4CDD0",
+  primary: "var(--tiui-palette-primary)",
+  primaryBorder: "rgba(220, 21, 11, 0.24)",
+  primarySoft: "rgba(220, 21, 11, 0.06)",
+  purple: "#9E4EC4",
+  purpleBorder: "rgba(158, 78, 196, 0.28)",
+  purpleSoft: "rgba(158, 78, 196, 0.06)",
+  surface: "#FFFFFF",
+  surfaceAlt: "#F9F9FB",
+  text: "var(--tiui-palette-carbon-900)",
+  textSecondary: "#4B5563",
+  textTertiary: "var(--tiui-palette-carbon-600)",
+} as const;
+
 const STATUS_FILTER_ORDER: FilterStatus[] = [
   "new",
   "removed",
@@ -173,23 +204,72 @@ const STATUS_FILTER_ORDER: FilterStatus[] = [
   "deprecated",
 ];
 
-const STATUS_TONE: Record<BadgeStatus, { fg: string; bg: string }> = {
+const STATUS_TONE: Record<
+  BadgeStatus,
+  { fg: string; bg: string; border: string }
+> = {
   changed: {
-    fg: "var(--tiui-palette-secondary)",
-    bg: "var(--tiui-palette-peacock-100)",
+    fg: COLORS.accent,
+    bg: COLORS.accentSoft,
+    border: COLORS.accentLight,
   },
-  new: { fg: "#0f8f4d", bg: "#e8f6ee" },
-  removed: { fg: "#ff2d2d", bg: "#fff0f0" },
-  modified: { fg: "#ff5a1f", bg: "#fff1e8" },
-  deprecated: { fg: "#8a35d8", bg: "#f5ecff" },
-  unchanged: { fg: "#596174", bg: "#f2f4f8" },
+  new: { fg: COLORS.aqua, bg: COLORS.aquaSoft, border: COLORS.aquaBorder },
+  removed: {
+    fg: COLORS.primary,
+    bg: COLORS.primarySoft,
+    border: COLORS.primaryBorder,
+  },
+  modified: {
+    fg: COLORS.purple,
+    bg: COLORS.purpleSoft,
+    border: COLORS.purpleBorder,
+  },
+  deprecated: {
+    fg: COLORS.textTertiary,
+    bg: COLORS.surfaceAlt,
+    border: COLORS.border,
+  },
+  unchanged: {
+    fg: COLORS.textTertiary,
+    bg: COLORS.surfaceAlt,
+    border: COLORS.border,
+  },
 };
 
-const SUMMARY_STATUS_TONE: Record<SummaryStatus, string> = {
-  new: "#0f8f4d",
-  removed: "var(--tiui-palette-carbon-900)",
-  modified: "var(--tiui-palette-primary)",
-  deprecated: "var(--tiui-palette-carbon-600)",
+const SUMMARY_TONE: Record<
+  FilterStatus,
+  { fg: string; bg: string; border: string; icon: React.ElementType }
+> = {
+  changed: {
+    fg: COLORS.text,
+    bg: COLORS.surfaceAlt,
+    border: COLORS.border,
+    icon: LayersOutlinedIcon,
+  },
+  new: {
+    fg: COLORS.aqua,
+    bg: COLORS.aquaSoft,
+    border: COLORS.aquaBorder,
+    icon: AddBoxOutlinedIcon,
+  },
+  removed: {
+    fg: COLORS.primary,
+    bg: COLORS.primarySoft,
+    border: COLORS.primaryBorder,
+    icon: RemoveOutlinedIcon,
+  },
+  modified: {
+    fg: COLORS.purple,
+    bg: COLORS.purpleSoft,
+    border: COLORS.purpleBorder,
+    icon: EditOutlinedIcon,
+  },
+  deprecated: {
+    fg: COLORS.textTertiary,
+    bg: COLORS.surfaceAlt,
+    border: COLORS.border,
+    icon: WarningAmberOutlinedIcon,
+  },
 };
 
 const CHANGE_FIELD_LABEL_KEYS: Record<string, string> = {
@@ -1132,10 +1212,17 @@ function StatusChip(props: { status: BadgeStatus; count?: number }) {
       }`}
       size="small"
       sx={{
+        border: `1px solid ${tone.border}`,
         color: tone.fg,
         backgroundColor: tone.bg,
         borderRadius: "4px",
-        fontWeight: 600,
+        fontSize: "12px",
+        fontWeight: 500,
+        height: "24px",
+        "& .MuiChip-label": {
+          paddingLeft: "8px",
+          paddingRight: "8px",
+        },
       }}
     />
   );
@@ -1168,7 +1255,7 @@ function ChangeTypeChips(props: { row: ComparisonRow }) {
             <Typography
               component="span"
               sx={{
-                color: "#687083",
+                color: COLORS.textTertiary,
                 fontSize: "13px",
                 fontWeight: 700,
                 marginX: 0.5,
@@ -1185,66 +1272,91 @@ function ChangeTypeChips(props: { row: ComparisonRow }) {
 }
 
 function SummaryMetric(props: {
-  status: SummaryStatus;
+  status: FilterStatus;
+  label: string;
   value: number;
   suffix: string;
   active: boolean;
-  onClick: (status: SummaryStatus) => void;
+  onClick: (status: FilterStatus) => void;
 }) {
-  const { t } = useI18next();
-  const tone = SUMMARY_STATUS_TONE[props.status];
+  const tone = SUMMARY_TONE[props.status];
+  const Icon = tone.icon;
   return (
     <ButtonBase
+      disableRipple
       onClick={() => props.onClick(props.status)}
       sx={{
         alignItems: "center",
-        backgroundColor: props.active
-          ? "var(--tiui-palette-peacock-50)"
-          : "#fff",
+        backgroundColor: COLORS.surface,
         display: "flex",
-        flexDirection: "column",
-        gap: "4px",
-        minHeight: { xs: "92px", md: "84px" },
-        padding: { xs: "12px", md: "10px 14px" },
-        textAlign: "center",
-        transition: "background-color 120ms ease, box-shadow 120ms ease",
+        gap: { xs: "12px", sm: "16px" },
+        justifyContent: "flex-start",
+        minHeight: { xs: "96px", md: "88px" },
+        padding: { xs: "16px", md: "16px 20px" },
+        boxShadow: props.active ? `inset 0 -3px 0 ${COLORS.primary}` : "none",
+        textAlign: "left",
+        transition: "box-shadow 120ms ease",
+        WebkitTapHighlightColor: "transparent",
         width: "100%",
         "&:hover": {
-          backgroundColor: "var(--tiui-palette-peacock-50)",
+          backgroundColor: COLORS.surface,
+        },
+        "&:active": {
+          backgroundColor: COLORS.surface,
         },
         "&:focus-visible": {
-          boxShadow: "inset 0 0 0 2px var(--tiui-palette-secondary)",
-          outline: "none",
+          outline: `2px solid ${COLORS.accent}`,
+          outlineOffset: "-2px",
         },
       }}
     >
-      <Typography
+      <Box
         sx={{
-          color: tone,
-          fontSize: "14px",
-          fontWeight: 600,
+          alignItems: "center",
+          backgroundColor: tone.bg,
+          border: `1px solid ${tone.border}`,
+          borderRadius: "50%",
+          color: tone.fg,
+          display: "flex",
+          flex: "0 0 auto",
+          height: "40px",
+          justifyContent: "center",
+          width: "40px",
         }}
       >
-        {t(`configComparison.status.${props.status}`)}
-      </Typography>
-      <Stack
-        direction="row"
-        alignItems="baseline"
-        spacing={1}
-        justifyContent="center"
-      >
+        <Icon sx={{ fontSize: 22 }} />
+      </Box>
+      <Stack spacing={0.5} sx={{ minWidth: 0 }}>
         <Typography
           sx={{
-            color: tone,
-            fontSize: { xs: "22px", md: "26px" },
-            fontWeight: 600,
+            color: COLORS.text,
+            fontSize: "14px",
+            fontWeight: 500,
+            lineHeight: "20px",
+          }}
+        >
+          {props.label}
+        </Typography>
+        <Typography
+          sx={{
+            color: COLORS.text,
+            fontSize: { xs: "24px", md: "28px" },
+            fontWeight: 400,
             lineHeight: 1,
           }}
         >
           {props.value.toLocaleString()}
-        </Typography>
-        <Typography sx={{ fontSize: "13px", color: "#687083" }}>
-          {props.suffix}
+          <Typography
+            component="span"
+            sx={{
+              color: COLORS.textTertiary,
+              fontSize: "13px",
+              fontWeight: 400,
+              marginLeft: "8px",
+            }}
+          >
+            {props.suffix}
+          </Typography>
         </Typography>
       </Stack>
     </ButtonBase>
@@ -1257,59 +1369,75 @@ function SummaryPanel(props: {
   activeStatus: FilterStatus;
   onStatusChange: (status: FilterStatus) => void;
 }) {
-  const items: { status: SummaryStatus; value: number }[] = [
-    { status: "new", value: props.summary.new },
-    { status: "removed", value: props.summary.removed },
-    { status: "modified", value: props.summary.modified },
-    { status: "deprecated", value: props.summary.deprecated },
+  const { t } = useI18next();
+  const totalChanged =
+    props.summary.new +
+    props.summary.removed +
+    props.summary.modified +
+    props.summary.deprecated;
+  const items: { status: FilterStatus; label: string; value: number }[] = [
+    {
+      status: "changed",
+      label: t("configComparison.summary.total"),
+      value: totalChanged,
+    },
+    {
+      status: "new",
+      label: t("configComparison.status.new"),
+      value: props.summary.new,
+    },
+    {
+      status: "removed",
+      label: t("configComparison.status.removed"),
+      value: props.summary.removed,
+    },
+    {
+      status: "modified",
+      label: t("configComparison.status.modified"),
+      value: props.summary.modified,
+    },
+    {
+      status: "deprecated",
+      label: t("configComparison.status.deprecated"),
+      value: props.summary.deprecated,
+    },
   ];
 
   return (
-    <Paper
-      variant="outlined"
+    <Box
       sx={{
-        borderColor: "#dfe5ef",
-        borderRadius: "8px",
+        display: "grid",
+        gap: 1.5,
+        gridTemplateColumns: {
+          xs: "1fr",
+          sm: "repeat(2, minmax(0, 1fr))",
+          md: "repeat(5, minmax(0, 1fr))",
+        },
         marginBottom: 2,
-        maxWidth: { md: 960 },
-        overflow: "hidden",
         width: "100%",
       }}
     >
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: {
-            xs: "repeat(2, minmax(0, 1fr))",
-            md: "repeat(4, minmax(0, 1fr))",
-          },
-        }}
-      >
-        {items.map((item, index) => (
-          <Box
-            key={item.status}
-            sx={{
-              borderLeft: {
-                xs: index % 2 === 0 ? "none" : "1px solid #e4e8f0",
-                md: index === 0 ? "none" : "1px solid #e4e8f0",
-              },
-              borderTop: {
-                xs: index < 2 ? "none" : "1px solid #e4e8f0",
-                md: "none",
-              },
-            }}
-          >
-            <SummaryMetric
-              status={item.status}
-              value={item.value}
-              suffix={props.suffix}
-              active={props.activeStatus === item.status}
-              onClick={props.onStatusChange}
-            />
-          </Box>
-        ))}
-      </Box>
-    </Paper>
+      {items.map((item) => (
+        <Paper
+          key={item.status}
+          variant="outlined"
+          sx={{
+            borderColor: COLORS.border,
+            borderRadius: "4px",
+            overflow: "hidden",
+          }}
+        >
+          <SummaryMetric
+            status={item.status}
+            label={item.label}
+            value={item.value}
+            suffix={props.suffix}
+            active={props.activeStatus === item.status}
+            onClick={props.onStatusChange}
+          />
+        </Paper>
+      ))}
+    </Box>
   );
 }
 
@@ -1319,7 +1447,9 @@ function ChangeDetailList(props: { row: ComparisonRow }) {
 
   if (items.length === 0) {
     return (
-      <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>-</Typography>
+      <Typography sx={{ color: COLORS.textTertiary, fontSize: "13px" }}>
+        -
+      </Typography>
     );
   }
 
@@ -1330,7 +1460,7 @@ function ChangeDetailList(props: { row: ComparisonRow }) {
         margin: 0,
         paddingLeft: "18px",
         "& li::marker": {
-          color: "#8a94a6",
+          color: COLORS.textTertiary,
         },
       }}
     >
@@ -1345,7 +1475,7 @@ function ChangeDetailList(props: { row: ComparisonRow }) {
         >
           <Typography
             component="span"
-            sx={{ color: "#2b3345", fontSize: "13px", fontWeight: 700 }}
+            sx={{ color: COLORS.text, fontSize: "13px", fontWeight: 500 }}
           >
             {item.title}
           </Typography>
@@ -1353,7 +1483,7 @@ function ChangeDetailList(props: { row: ComparisonRow }) {
             <Typography
               component="span"
               sx={{
-                color: "#596174",
+                color: COLORS.textSecondary,
                 display: "block",
                 fontSize: "13px",
                 marginTop: "2px",
@@ -1392,10 +1522,23 @@ function SelectFilter(props: {
         onChange={(event) => props.onChange(event.target.value)}
         displayEmpty
         sx={{
-          borderRadius: "6px",
-          color: "#596174",
+          backgroundColor: COLORS.surface,
+          borderRadius: 0,
+          color: COLORS.text,
           fontSize: "14px",
-          height: "44px",
+          height: { xs: "44px", md: "40px" },
+          "& .MuiOutlinedInput-notchedOutline": {
+            borderColor: COLORS.borderSubtle,
+          },
+          "&:hover .MuiOutlinedInput-notchedOutline": {
+            borderColor: COLORS.border,
+          },
+          "&.Mui-focused": {
+            boxShadow: "0 0 0 3px rgba(20, 128, 184, 0.1)",
+          },
+          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+            borderColor: COLORS.accent,
+          },
         }}
       >
         {props.includeAll !== false && (
@@ -1421,11 +1564,19 @@ function ConfigComparisonTable(props: {
   contentType: ContentTypeId;
   showChangeDetails: boolean;
   showChangeNote: boolean;
+  itemSortDirection: SortDirection;
+  onItemSortDirectionChange: () => void;
 }) {
   const { t } = useI18next();
   if (props.rows.length === 0) {
     return (
-      <Box sx={{ padding: "36px", textAlign: "center", color: "#687083" }}>
+      <Box
+        sx={{
+          padding: "36px",
+          textAlign: "center",
+          color: COLORS.textTertiary,
+        }}
+      >
         {t("configComparison.noMatchingItems")}
       </Box>
     );
@@ -1446,10 +1597,9 @@ function ConfigComparisonTable(props: {
   return (
     <TableContainer
       sx={{
-        background:
-          "linear-gradient(to left, rgba(31, 36, 48, 0.12), rgba(31, 36, 48, 0)) right center / 28px 100% no-repeat",
-        border: "1px solid #e4e8f0",
-        borderRadius: "8px",
+        backgroundColor: COLORS.surface,
+        border: `1px solid ${COLORS.borderSubtle}`,
+        borderRadius: 0,
         overflowX: "auto",
       }}
     >
@@ -1457,17 +1607,42 @@ function ConfigComparisonTable(props: {
         <TableHead>
           <TableRow
             sx={{
-              backgroundColor: "#fbfcff",
+              backgroundColor: COLORS.surfaceAlt,
               "& .MuiTableCell-root": {
-                color: "#2b3345",
+                color: COLORS.text,
                 fontSize: "13px",
-                fontWeight: 700,
+                fontWeight: 500,
                 whiteSpace: "nowrap",
               },
             }}
           >
             <TableCell>{t("configComparison.table.status")}</TableCell>
-            <TableCell>{itemColumnLabel}</TableCell>
+            <TableCell
+              sortDirection={props.itemSortDirection}
+              sx={{ minWidth: 300, width: 300 }}
+            >
+              <TableSortLabel
+                active
+                direction={props.itemSortDirection}
+                hideSortIcon={false}
+                onClick={props.onItemSortDirectionChange}
+                sx={{
+                  color: `${COLORS.text} !important`,
+                  "& .MuiTableSortLabel-icon": {
+                    color: `${COLORS.textTertiary} !important`,
+                    fontSize: "16px",
+                    marginLeft: "4px",
+                    opacity: 1,
+                  },
+                  "&:focus-visible": {
+                    outline: `2px solid ${COLORS.accent}`,
+                    outlineOffset: "2px",
+                  },
+                }}
+              >
+                {itemColumnLabel}
+              </TableSortLabel>
+            </TableCell>
             <TableCell>
               {valueColumnLabel} ({props.fromVersion})
             </TableCell>
@@ -1495,8 +1670,11 @@ function ConfigComparisonTable(props: {
                 hover
                 key={`${row.content_type}-${row.item_key}`}
                 sx={{
+                  "&:hover": {
+                    backgroundColor: "var(--tiui-palette-peacock-50)",
+                  },
                   "& .MuiTableCell-root": {
-                    borderColor: "#e8edf5",
+                    borderColor: COLORS.borderSubtle,
                     paddingBottom: "14px",
                     paddingTop: "14px",
                   },
@@ -1509,32 +1687,77 @@ function ConfigComparisonTable(props: {
                   sx={{
                     fontFamily: "monospace",
                     fontSize: "13px",
-                    maxWidth: 280,
+                    maxWidth: 360,
+                    minWidth: 300,
+                    width: 300,
                   }}
                 >
-                  {row.doc_link ? (
-                    <Box
-                      component="a"
-                      href={row.doc_link}
+                  <Box
+                    sx={{
+                      alignItems: "center",
+                      display: "flex",
+                      gap: "6px",
+                      maxWidth: "100%",
+                    }}
+                  >
+                    {row.doc_link ? (
+                      <Box
+                        component="a"
+                        href={row.doc_link}
+                        sx={{
+                          color: COLORS.accent,
+                          minWidth: 0,
+                          textDecoration: "none",
+                          whiteSpace: "nowrap",
+                          "&:hover": {
+                            color: COLORS.accentDark,
+                            textDecoration: "underline",
+                          },
+                        }}
+                      >
+                        {row.item_key}
+                      </Box>
+                    ) : (
+                      <Typography
+                        component="span"
+                        sx={{
+                          color: COLORS.text,
+                          fontFamily: "monospace",
+                          fontSize: "13px",
+                          minWidth: 0,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {row.item_key}
+                      </Typography>
+                    )}
+                    <CopyBtn
+                      content={row.item_key}
+                      disableRipple
                       sx={{
-                        color: "var(--tiui-palette-secondary)",
-                        overflowWrap: "anywhere",
-                        textDecoration: "none",
+                        color: "var(--tiui-palette-carbon-500)",
+                        flex: "0 0 auto",
+                        fontSize: "14px",
+                        height: "20px",
+                        marginLeft: "1px",
+                        padding: "2px",
+                        position: "static",
+                        width: "20px",
+                        "&:active": {
+                          backgroundColor: "transparent",
+                        },
                         "&:hover": {
-                          textDecoration: "underline",
+                          backgroundColor: "transparent",
+                          color: COLORS.text,
                         },
                       }}
-                    >
-                      {row.item_key}
-                    </Box>
-                  ) : (
-                    row.item_key
-                  )}
+                    />
+                  </Box>
                 </TableCell>
                 <TableCell
                   sx={{
                     whiteSpace: "pre-wrap",
-                    color: "#596174",
+                    color: COLORS.textSecondary,
                     fontSize: "13px",
                     maxWidth: 220,
                   }}
@@ -1544,10 +1767,10 @@ function ConfigComparisonTable(props: {
                 <TableCell
                   sx={{
                     whiteSpace: "pre-wrap",
-                    color: valueChanged ? "#d45a00" : "#596174",
+                    color: valueChanged ? COLORS.text : COLORS.textSecondary,
                     fontSize: "13px",
                     maxWidth: 220,
-                    fontWeight: valueChanged ? 700 : 400,
+                    fontWeight: valueChanged ? 500 : 400,
                   }}
                 >
                   {displayValue(row.to_value)}
@@ -1555,7 +1778,7 @@ function ConfigComparisonTable(props: {
                 {props.showChangeDetails && (
                   <TableCell
                     sx={{
-                      color: "#596174",
+                      color: COLORS.textSecondary,
                       fontSize: "13px",
                       maxWidth: 320,
                       whiteSpace: "pre-wrap",
@@ -1568,14 +1791,16 @@ function ConfigComparisonTable(props: {
                   {row.is_deprecated ? (
                     <StatusChip status="deprecated" count={undefined} />
                   ) : (
-                    <Typography sx={{ color: "#9aa2b1", fontSize: "13px" }}>
+                    <Typography
+                      sx={{ color: COLORS.textTertiary, fontSize: "13px" }}
+                    >
                       {t("configComparison.table.no")}
                     </Typography>
                   )}
                   {row.deprecated_since && (
                     <Typography
                       sx={{
-                        color: "#7b2fd6",
+                        color: COLORS.textTertiary,
                         fontSize: "12px",
                         marginTop: "4px",
                       }}
@@ -1587,7 +1812,7 @@ function ConfigComparisonTable(props: {
                 {props.showChangeNote && (
                   <TableCell
                     sx={{
-                      color: "#596174",
+                      color: COLORS.textSecondary,
                       fontSize: "13px",
                       maxWidth: 420,
                       whiteSpace: "pre-wrap",
@@ -1604,9 +1829,9 @@ function ConfigComparisonTable(props: {
                           size="small"
                           endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
                           sx={{
-                            color: "var(--tiui-palette-secondary)",
+                            color: COLORS.accent,
                             fontSize: "12px",
-                            fontWeight: 700,
+                            fontWeight: 500,
                             minWidth: 0,
                             padding: 0,
                             textTransform: "none",
@@ -1618,7 +1843,9 @@ function ConfigComparisonTable(props: {
                     )}
                   </TableCell>
                 )}
-                <TableCell sx={{ color: "#596174", fontSize: "13px" }}>
+                <TableCell
+                  sx={{ color: COLORS.textSecondary, fontSize: "13px" }}
+                >
                   {row.source}
                 </TableCell>
               </TableRow>
@@ -1637,69 +1864,54 @@ function EmptyComparisonIllustration() {
       sx={{
         alignItems: "center",
         display: "flex",
-        height: { xs: 260, md: 280 },
+        height: { xs: 220, md: 240 },
         justifyContent: "center",
-        minWidth: { xs: "100%", md: 300 },
+        minWidth: { xs: "100%", md: 260 },
       }}
     >
       <Box
         component="svg"
         viewBox="0 0 300 300"
         sx={{
-          height: { xs: 260, md: 280 },
-          width: { xs: 260, md: 280 },
+          height: { xs: 220, md: 240 },
+          width: { xs: 220, md: 240 },
         }}
         role="img"
       >
-        <defs>
-          <filter
-            id="comparison-card-shadow"
-            x="-35%"
-            y="-25%"
-            width="170%"
-            height="160%"
-          >
-            <feDropShadow
-              dx="0"
-              dy="10"
-              floodColor="#1f2430"
-              floodOpacity="0.08"
-              stdDeviation="12"
-            />
-          </filter>
-        </defs>
-
         <circle
           cx="150"
           cy="150"
           fill="none"
           r="108"
-          stroke="#6f7f99"
+          stroke={COLORS.aquaBorder}
           strokeDasharray="4 9"
           strokeLinecap="round"
+          strokeOpacity={0.9}
           strokeWidth="2"
         />
         <path
           d="M270 143V156"
           fill="none"
-          stroke="#6f7f99"
+          stroke={COLORS.purple}
           strokeDasharray="3 8"
+          strokeOpacity={0.45}
           strokeWidth="2"
         />
         <path
           d="M30 146V158"
           fill="none"
-          stroke="#d8e0ea"
+          stroke={COLORS.aqua}
           strokeDasharray="3 8"
+          strokeOpacity={0.35}
           strokeWidth="2"
         />
 
-        <g filter="url(#comparison-card-shadow)">
+        <g>
           <rect
             fill="#fff"
             height="126"
-            rx="9"
-            stroke="#b8cafa"
+            rx="0"
+            stroke={COLORS.aquaBorder}
             strokeWidth="1.5"
             width="82"
             x="48"
@@ -1707,29 +1919,29 @@ function EmptyComparisonIllustration() {
           />
           <path
             d="M57 87H121C125.971 87 130 91.029 130 96V116H48V96C48 91.029 52.029 87 57 87Z"
-            fill="#c8d8ff"
+            fill={COLORS.aquaSoft}
           />
           {[0, 1, 2, 3, 4].map((line) => (
             <g key={`left-${line}`} transform={`translate(0 ${line * 16})`}>
-              <circle cx="66" cy="140" fill="#6f7a8f" r="3" />
+              <circle cx="60" cy="132" fill={COLORS.graphicMuted} r="3" />
               <rect
-                fill="#dfe5ee"
+                fill={COLORS.graphicMuted}
                 height="5"
                 rx="2.5"
                 width={line === 4 ? 34 : 42}
-                x="82"
-                y="137.5"
+                x="76"
+                y="129.5"
               />
             </g>
           ))}
         </g>
 
-        <g filter="url(#comparison-card-shadow)">
+        <g>
           <rect
             fill="#fff"
             height="126"
-            rx="9"
-            stroke="#d7ddd9"
+            rx="0"
+            stroke={COLORS.purpleBorder}
             strokeWidth="1.5"
             width="82"
             x="170"
@@ -1737,18 +1949,18 @@ function EmptyComparisonIllustration() {
           />
           <path
             d="M179 87H243C247.971 87 252 91.029 252 96V116H170V96C170 91.029 174.029 87 179 87Z"
-            fill="#cfeee1"
+            fill={COLORS.purpleSoft}
           />
           {[0, 1, 2, 3, 4].map((line) => (
             <g key={`right-${line}`} transform={`translate(0 ${line * 16})`}>
-              <circle cx="188" cy="140" fill="#6f7a8f" r="3" />
+              <circle cx="182" cy="132" fill={COLORS.graphicMuted} r="3" />
               <rect
-                fill="#dfe5ee"
+                fill={COLORS.graphicMuted}
                 height="5"
                 rx="2.5"
                 width={line === 4 ? 34 : 42}
-                x="204"
-                y="137.5"
+                x="198"
+                y="129.5"
               />
             </g>
           ))}
@@ -1757,14 +1969,14 @@ function EmptyComparisonIllustration() {
         <path
           d="M138 142H158"
           fill="none"
-          stroke="#2d86ff"
+          stroke={COLORS.aqua}
           strokeLinecap="round"
           strokeWidth="2.3"
         />
         <path
           d="M151 135L160 142L151 149"
           fill="none"
-          stroke="#2d86ff"
+          stroke={COLORS.aqua}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="2.3"
@@ -1772,14 +1984,14 @@ function EmptyComparisonIllustration() {
         <path
           d="M162 170H142"
           fill="none"
-          stroke="#33bc84"
+          stroke={COLORS.purple}
           strokeLinecap="round"
           strokeWidth="2.3"
         />
         <path
           d="M149 163L140 170L149 177"
           fill="none"
-          stroke="#33bc84"
+          stroke={COLORS.purple}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="2.3"
@@ -1788,12 +2000,12 @@ function EmptyComparisonIllustration() {
         <g fill="none" strokeLinecap="round" strokeWidth="2.5">
           <path d="M262 66V80" stroke="#cbd6e4" />
           <path d="M255 73H269" stroke="#cbd6e4" />
-          <path d="M26 208V222" stroke="#50a58d" />
-          <path d="M19 215H33" stroke="#50a58d" />
+          <path d="M26 208V222" stroke={COLORS.aqua} />
+          <path d="M19 215H33" stroke={COLORS.aqua} />
           <path d="M42 80L48 86" stroke="#e8f3ff" />
           <path d="M48 80L42 86" stroke="#e8f3ff" />
-          <path d="M36 250V262" stroke="#ffcc74" />
-          <path d="M30 256H42" stroke="#ffcc74" />
+          <path d="M36 250V262" stroke={COLORS.purple} />
+          <path d="M30 256H42" stroke={COLORS.purple} />
           <path d="M270 226V238" stroke="#cbd6e4" />
           <path d="M264 232H276" stroke="#cbd6e4" />
         </g>
@@ -1802,7 +2014,7 @@ function EmptyComparisonIllustration() {
           cy="264"
           fill="none"
           r="5"
-          stroke="#56c493"
+          stroke={COLORS.aqua}
           strokeWidth="2.5"
         />
       </Box>
@@ -1819,10 +2031,10 @@ function DefaultComparisonState(props: {
     <Paper
       variant="outlined"
       sx={{
-        borderColor: "#dfe5ef",
-        borderRadius: "8px",
+        borderColor: COLORS.border,
+        borderRadius: 0,
         marginBottom: 3,
-        padding: { xs: 3, md: 4 },
+        padding: { xs: 2, md: 3 },
       }}
     >
       <Stack
@@ -1834,32 +2046,33 @@ function DefaultComparisonState(props: {
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography
             sx={{
-              color: "#1f2430",
-              fontSize: { xs: "22px", md: "26px" },
-              fontWeight: 700,
+              color: COLORS.text,
+              fontSize: { xs: "20px", md: "24px" },
+              fontWeight: 500,
+              lineHeight: { xs: "28px", md: "30px" },
               marginBottom: 1.5,
             }}
           >
             {props.t("configComparison.defaultState.title")}
           </Typography>
-          <Typography sx={{ color: "#596174", marginBottom: 1 }}>
+          <Typography sx={{ color: COLORS.textSecondary, marginBottom: 1 }}>
             {props.t("configComparison.defaultState.description")}
           </Typography>
-          <Typography sx={{ color: "#596174", marginBottom: 3 }}>
+          <Typography sx={{ color: COLORS.textSecondary, marginBottom: 3 }}>
             {props.t("configComparison.defaultState.details")}
           </Typography>
           {props.popularComparisons.length > 0 && (
             <Box
               sx={{
-                borderTop: "1px solid #e5eaf2",
+                borderTop: `1px solid ${COLORS.borderSubtle}`,
                 paddingTop: 2,
               }}
             >
               <Typography
                 sx={{
-                  color: "#1f2430",
+                  color: COLORS.text,
                   fontSize: "14px",
-                  fontWeight: 700,
+                  fontWeight: 500,
                   marginBottom: 1,
                 }}
               >
@@ -1872,14 +2085,18 @@ function DefaultComparisonState(props: {
                     variant="outlined"
                     onClick={() => props.onSelectPopularComparison(comparison)}
                     sx={{
-                      borderColor: "var(--tiui-palette-secondary-light)",
-                      color: "var(--tiui-palette-secondary)",
-                      fontWeight: 700,
+                      borderColor: COLORS.border,
+                      borderRadius: 0,
+                      color: COLORS.text,
+                      fontWeight: 500,
+                      height: { xs: "44px", md: "32px" },
                       minWidth: 0,
+                      padding: "5px 15px",
                       textTransform: "none",
                       "&:hover": {
-                        backgroundColor: "var(--tiui-palette-peacock-50)",
-                        borderColor: "var(--tiui-palette-secondary)",
+                        backgroundColor: COLORS.surfaceAlt,
+                        borderColor: COLORS.accent,
+                        color: COLORS.accent,
                       },
                     }}
                   >
@@ -1902,17 +2119,15 @@ function ConfigComparisonInfoNote(props: { message: string }) {
       spacing={1}
       alignItems="center"
       sx={{
-        backgroundColor: "var(--tiui-palette-peacock-50)",
-        border: "1px solid var(--tiui-palette-secondary-light)",
-        borderRadius: "6px",
-        color: "#596174",
+        backgroundColor: COLORS.surfaceAlt,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 0,
+        color: COLORS.textSecondary,
         marginTop: 2,
         padding: "12px 16px",
       }}
     >
-      <InfoOutlinedIcon
-        sx={{ color: "var(--tiui-palette-secondary)", fontSize: 18 }}
-      />
+      <InfoOutlinedIcon sx={{ color: COLORS.accent, fontSize: 18 }} />
       <Typography sx={{ fontSize: "14px" }}>{props.message}</Typography>
     </Stack>
   );
@@ -1929,6 +2144,8 @@ export default function ConfigComparison() {
     React.useState<ContentTypeId>("system_variables");
   const [filterStatus, setFilterStatus] =
     React.useState<FilterStatus>("changed");
+  const [itemSortDirection, setItemSortDirection] =
+    React.useState<SortDirection>("asc");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -2059,7 +2276,16 @@ export default function ConfigComparison() {
       (row) => matchesFilter(row, filterStatus) && matchesSearch(row, search)
     );
   }, [comparison, filterStatus, search]);
-  const visibleRows = filteredRows.slice(
+  const sortedRows = React.useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      const order = a.item_key.localeCompare(b.item_key, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+      return itemSortDirection === "asc" ? order : -order;
+    });
+  }, [filteredRows, itemSortDirection]);
+  const visibleRows = sortedRows.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
@@ -2069,7 +2295,15 @@ export default function ConfigComparison() {
 
   React.useEffect(() => {
     setPage(0);
-  }, [fromVersion, toVersion, contentType, filterStatus, search, rowsPerPage]);
+  }, [
+    fromVersion,
+    toVersion,
+    contentType,
+    filterStatus,
+    search,
+    rowsPerPage,
+    itemSortDirection,
+  ]);
 
   React.useEffect(() => {
     setFilterStatus("changed");
@@ -2077,11 +2311,11 @@ export default function ConfigComparison() {
 
   if (error) {
     return (
-      <Paper sx={{ padding: 3, borderRadius: "8px", color: "#d62b2b" }}>
+      <Paper sx={{ padding: 3, borderRadius: 0, color: "#d62b2b" }}>
         <Typography sx={{ fontWeight: 700, marginBottom: 1 }}>
           {t("configComparison.loadFailed")}
         </Typography>
-        <Typography sx={{ color: "#596174", marginBottom: 2 }}>
+        <Typography sx={{ color: COLORS.textSecondary, marginBottom: 2 }}>
           {error}
         </Typography>
         <Button
@@ -2128,6 +2362,9 @@ export default function ConfigComparison() {
     setFilterStatus(status);
     setPage(0);
   };
+  const handleItemSortDirectionChange = () => {
+    setItemSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
+  };
   const handlePopularComparison = (selectedComparison: PopularComparison) => {
     setFromVersion(selectedComparison.from);
     setToVersion(selectedComparison.to);
@@ -2137,7 +2374,15 @@ export default function ConfigComparison() {
   };
 
   return (
-    <Box sx={{ padding: { xs: "24px 16px", md: "32px 32px 48px" } }}>
+    <Box
+      sx={{
+        boxSizing: "border-box",
+        marginX: "auto",
+        maxWidth: "1360px",
+        padding: { xs: "20px 16px", md: "32px 32px 64px" },
+        width: "100%",
+      }}
+    >
       <Stack
         direction={{ xs: "column", md: "row" }}
         justifyContent="space-between"
@@ -2145,16 +2390,55 @@ export default function ConfigComparison() {
         sx={{ marginBottom: 3 }}
       >
         <Box>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            sx={{ flexWrap: "wrap" }}
+          >
+            <Typography
+              component="h1"
+              sx={{
+                color: COLORS.text,
+                fontSize: { xs: "28px", md: "36px" },
+                fontWeight: 400,
+                lineHeight: { xs: "36px", md: "45px" },
+              }}
+            >
+              {t("configComparison.title")}
+            </Typography>
+            <Chip
+              label={t("navbar.badge.beta")}
+              size="small"
+              variant="outlined"
+              sx={{
+                backgroundColor: COLORS.aquaSoft,
+                borderColor: COLORS.aquaBorder,
+                borderRadius: "20px",
+                color: COLORS.aqua,
+                fontSize: "12px",
+                fontWeight: 400,
+                height: "20px",
+                pointerEvents: "none",
+                "& .MuiChip-label": {
+                  lineHeight: "20px",
+                  paddingLeft: "8px",
+                  paddingRight: "8px",
+                },
+              }}
+            />
+          </Stack>
           <Typography
-            component="h1"
             sx={{
-              color: "var(--tiui-palette-carbon-900)",
-              fontSize: "2.5rem",
+              color: COLORS.textTertiary,
+              fontSize: "16px",
               fontWeight: 400,
-              lineHeight: "3.75rem",
+              lineHeight: "24px",
+              marginTop: 1,
+              maxWidth: 1080,
             }}
           >
-            {t("configComparison.title")}
+            {t("configComparison.description")}
           </Typography>
         </Box>
       </Stack>
@@ -2162,11 +2446,11 @@ export default function ConfigComparison() {
       <Paper
         variant="outlined"
         sx={{
-          backgroundColor: "#fff",
-          borderColor: "#dfe5ef",
-          borderRadius: "8px",
+          backgroundColor: COLORS.surface,
+          borderColor: COLORS.border,
+          borderRadius: 0,
           marginBottom: 3,
-          padding: { xs: 2, md: "20px 24px 24px" },
+          padding: { xs: 2, md: 3 },
         }}
       >
         <Stack
@@ -2182,9 +2466,9 @@ export default function ConfigComparison() {
           >
             <Typography
               sx={{
-                color: "#1f2430",
+                color: COLORS.text,
                 fontSize: "16px",
-                fontWeight: 700,
+                fontWeight: 500,
                 marginBottom: 2,
               }}
             >
@@ -2198,9 +2482,10 @@ export default function ConfigComparison() {
               <Box sx={{ flex: 1, minWidth: { sm: 0 } }}>
                 <Typography
                   sx={{
-                    color: "#687083",
-                    fontSize: "13px",
-                    marginBottom: "6px",
+                    color: COLORS.textSecondary,
+                    fontSize: "14px",
+                    lineHeight: "20px",
+                    marginBottom: 1,
                   }}
                 >
                   {t("configComparison.from")}
@@ -2216,17 +2501,21 @@ export default function ConfigComparison() {
                     }
                     onChange={(event) => setFromVersion(event.target.value)}
                     sx={{
-                      backgroundColor: "#fff",
-                      height: "44px",
-                      ...(fromVersion ? {} : { color: "#8791a5" }),
+                      backgroundColor: COLORS.surface,
+                      borderRadius: 0,
+                      height: { xs: "44px", md: "40px" },
+                      ...(fromVersion ? {} : { color: "#9CA3AF" }),
                       "& .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#dbe1ec",
+                        borderColor: COLORS.borderSubtle,
                       },
                       "&:hover .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#c7d1e0",
+                        borderColor: COLORS.border,
+                      },
+                      "&.Mui-focused": {
+                        boxShadow: "0 0 0 3px rgba(20, 128, 184, 0.1)",
                       },
                       "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "var(--tiui-palette-secondary-light)",
+                        borderColor: COLORS.accent,
                       },
                     }}
                   >
@@ -2245,7 +2534,7 @@ export default function ConfigComparison() {
                 aria-hidden
                 sx={{
                   alignItems: "center",
-                  color: "#8a94a6",
+                  color: COLORS.textTertiary,
                   display: { xs: "none", sm: "flex" },
                   height: "44px",
                   justifyContent: "center",
@@ -2257,9 +2546,10 @@ export default function ConfigComparison() {
               <Box sx={{ flex: 1, minWidth: { sm: 0 } }}>
                 <Typography
                   sx={{
-                    color: "#687083",
-                    fontSize: "13px",
-                    marginBottom: "6px",
+                    color: COLORS.textSecondary,
+                    fontSize: "14px",
+                    lineHeight: "20px",
+                    marginBottom: 1,
                   }}
                 >
                   {t("configComparison.to")}
@@ -2272,16 +2562,20 @@ export default function ConfigComparison() {
                     }
                     onChange={(event) => setToVersion(event.target.value)}
                     sx={{
-                      backgroundColor: "#fff",
-                      height: "44px",
+                      backgroundColor: COLORS.surface,
+                      borderRadius: 0,
+                      height: { xs: "44px", md: "40px" },
                       "& .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#dbe1ec",
+                        borderColor: COLORS.borderSubtle,
                       },
                       "&:hover .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#c7d1e0",
+                        borderColor: COLORS.border,
+                      },
+                      "&.Mui-focused": {
+                        boxShadow: "0 0 0 3px rgba(20, 128, 184, 0.1)",
                       },
                       "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "var(--tiui-palette-secondary-light)",
+                        borderColor: COLORS.accent,
                       },
                     }}
                   >
@@ -2299,13 +2593,13 @@ export default function ConfigComparison() {
             flexItem
             orientation="vertical"
             sx={{
-              borderColor: "#e5eaf2",
+              borderColor: COLORS.borderSubtle,
               display: { xs: "none", lg: "block" },
             }}
           />
           <Divider
             sx={{
-              borderColor: "#e5eaf2",
+              borderColor: COLORS.borderSubtle,
               display: { xs: "block", lg: "none" },
             }}
           />
@@ -2320,9 +2614,10 @@ export default function ConfigComparison() {
             >
               <Typography
                 sx={{
-                  color: "#687083",
-                  fontSize: "13px",
-                  marginBottom: "6px",
+                  color: COLORS.textSecondary,
+                  fontSize: "14px",
+                  lineHeight: "20px",
+                  marginBottom: 1,
                 }}
               >
                 {t("configComparison.comparisonObject")}
@@ -2335,33 +2630,43 @@ export default function ConfigComparison() {
                   display: "flex",
                   flexWrap: "wrap",
                   "& .MuiToggleButtonGroup-grouped": {
-                    backgroundColor: "#fff",
-                    border: "1px solid #dbe1ec !important",
-                    color: "#596174",
+                    backgroundColor: COLORS.surface,
+                    border: `1px solid ${COLORS.borderSubtle} !important`,
+                    borderRadius: "0 !important",
+                    color: COLORS.textSecondary,
+                    fontWeight: 500,
                     margin: 0,
                     minHeight: "44px",
                     minWidth: { xs: "50%", sm: "auto" },
+                    transition: "box-shadow 120ms ease",
                     textTransform: "none",
-                    padding: "10px 18px",
+                    padding: { xs: "10px 16px", md: "8px 16px" },
+                    WebkitTapHighlightColor: "transparent",
                     whiteSpace: "nowrap",
                     "&:hover": {
-                      backgroundColor: "var(--tiui-palette-peacock-50)",
+                      backgroundColor: COLORS.surface,
+                    },
+                    "&:active": {
+                      backgroundColor: COLORS.surface,
                     },
                     "&.Mui-selected": {
-                      backgroundColor: "var(--tiui-palette-peacock-100)",
-                      borderColor:
-                        "var(--tiui-palette-secondary-light) !important",
-                      color: "var(--tiui-palette-secondary)",
-                      fontWeight: 700,
+                      backgroundColor: COLORS.surface,
+                      borderColor: `${COLORS.borderSubtle} !important`,
+                      boxShadow: `inset 0 -3px 0 ${COLORS.primary}`,
+                      color: COLORS.text,
+                      fontWeight: 500,
                       "&:hover": {
-                        backgroundColor: "var(--tiui-palette-peacock-200)",
+                        backgroundColor: COLORS.surface,
+                      },
+                      "&:active": {
+                        backgroundColor: COLORS.surface,
                       },
                     },
                   },
                 }}
               >
                 {dataset.contentTypes.map((item) => (
-                  <ToggleButton value={item.id} key={item.id}>
+                  <ToggleButton disableRipple value={item.id} key={item.id}>
                     {item.label}
                   </ToggleButton>
                 ))}
@@ -2391,11 +2696,39 @@ export default function ConfigComparison() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={searchPlaceholder}
-              sx={{ width: { xs: "100%", md: 420 } }}
+              sx={{
+                width: { xs: "100%", md: 420 },
+                "& .MuiOutlinedInput-root": {
+                  backgroundColor: COLORS.surface,
+                  borderRadius: "4px",
+                  height: "40px",
+                  "& fieldset": {
+                    borderColor: COLORS.borderSubtle,
+                  },
+                  "&:hover fieldset": {
+                    borderColor: COLORS.border,
+                  },
+                  "&.Mui-focused": {
+                    boxShadow: "0 0 0 3px rgba(20, 128, 184, 0.1)",
+                  },
+                  "&.Mui-focused fieldset": {
+                    borderColor: COLORS.accent,
+                    borderWidth: "1px",
+                  },
+                },
+                "& .MuiInputBase-input": {
+                  color: COLORS.text,
+                  fontSize: "14px",
+                },
+                "& .MuiInputBase-input::placeholder": {
+                  color: "#9CA3AF",
+                  opacity: 1,
+                },
+              }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ color: "#8791a5" }} />
+                    <SearchIcon sx={{ color: COLORS.textTertiary }} />
                   </InputAdornment>
                 ),
               }}
@@ -2424,17 +2757,20 @@ export default function ConfigComparison() {
                 )
               }
               sx={{
-                borderRadius: "6px",
-                borderColor: "var(--tiui-palette-secondary)",
-                color: "var(--tiui-palette-secondary)",
-                fontWeight: 700,
-                height: "44px",
+                backgroundColor: COLORS.surfaceAlt,
+                borderColor: COLORS.border,
+                borderRadius: 0,
+                color: COLORS.text,
+                fontWeight: 500,
+                height: { xs: "44px", md: "32px" },
                 marginLeft: { md: "auto !important" },
+                padding: { xs: "9px 16px", md: "5px 15px" },
                 textTransform: "none",
                 whiteSpace: "nowrap",
                 "&:hover": {
-                  backgroundColor: "var(--tiui-palette-peacock-50)",
-                  borderColor: "var(--tiui-palette-secondary-dark)",
+                  backgroundColor: "#F3F4F6",
+                  borderColor: "#B3BBBE",
+                  color: COLORS.text,
                 },
               }}
             >
@@ -2449,6 +2785,8 @@ export default function ConfigComparison() {
             contentType={contentType}
             showChangeDetails={showChangeDetails}
             showChangeNote={showChangeNote}
+            itemSortDirection={itemSortDirection}
+            onItemSortDirectionChange={handleItemSortDirectionChange}
           />
           <TablePagination
             component="div"
