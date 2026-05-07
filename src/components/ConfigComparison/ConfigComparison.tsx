@@ -1637,17 +1637,17 @@ function EmptyComparisonIllustration() {
       sx={{
         alignItems: "center",
         display: "flex",
-        height: { xs: 220, md: 250 },
+        height: { xs: 260, md: 280 },
         justifyContent: "center",
-        minWidth: { xs: "100%", md: 320 },
+        minWidth: { xs: "100%", md: 300 },
       }}
     >
       <Box
         component="svg"
-        viewBox="0 0 300 240"
+        viewBox="0 0 300 300"
         sx={{
-          height: { xs: 250, md: 280 },
-          width: { xs: 320, md: 350 },
+          height: { xs: 260, md: 280 },
+          width: { xs: 260, md: 280 },
         }}
         role="img"
       >
@@ -1671,23 +1671,23 @@ function EmptyComparisonIllustration() {
 
         <circle
           cx="150"
-          cy="120"
+          cy="150"
           fill="none"
-          r="102"
+          r="108"
           stroke="#6f7f99"
           strokeDasharray="4 9"
           strokeLinecap="round"
           strokeWidth="2"
         />
         <path
-          d="M268 111V122"
+          d="M270 143V156"
           fill="none"
           stroke="#6f7f99"
           strokeDasharray="3 8"
           strokeWidth="2"
         />
         <path
-          d="M30 116V126"
+          d="M30 146V158"
           fill="none"
           stroke="#d8e0ea"
           strokeDasharray="3 8"
@@ -1703,22 +1703,22 @@ function EmptyComparisonIllustration() {
             strokeWidth="1.5"
             width="82"
             x="48"
-            y="62"
+            y="87"
           />
           <path
-            d="M57 62H121C125.971 62 130 66.029 130 71V91H48V71C48 66.029 52.029 62 57 62Z"
+            d="M57 87H121C125.971 87 130 91.029 130 96V116H48V96C48 91.029 52.029 87 57 87Z"
             fill="#c8d8ff"
           />
           {[0, 1, 2, 3, 4].map((line) => (
-            <g key={`left-${line}`} transform={`translate(0 ${line * 18})`}>
-              <circle cx="66" cy="109" fill="#6f7a8f" r="3.2" />
+            <g key={`left-${line}`} transform={`translate(0 ${line * 16})`}>
+              <circle cx="66" cy="140" fill="#6f7a8f" r="3" />
               <rect
                 fill="#dfe5ee"
                 height="5"
                 rx="2.5"
                 width={line === 4 ? 34 : 42}
                 x="82"
-                y="106.5"
+                y="137.5"
               />
             </g>
           ))}
@@ -1733,73 +1733,73 @@ function EmptyComparisonIllustration() {
             strokeWidth="1.5"
             width="82"
             x="170"
-            y="62"
+            y="87"
           />
           <path
-            d="M179 62H243C247.971 62 252 66.029 252 71V91H170V71C170 66.029 174.029 62 179 62Z"
+            d="M179 87H243C247.971 87 252 91.029 252 96V116H170V96C170 91.029 174.029 87 179 87Z"
             fill="#cfeee1"
           />
           {[0, 1, 2, 3, 4].map((line) => (
-            <g key={`right-${line}`} transform={`translate(0 ${line * 18})`}>
-              <circle cx="188" cy="109" fill="#6f7a8f" r="3.2" />
+            <g key={`right-${line}`} transform={`translate(0 ${line * 16})`}>
+              <circle cx="188" cy="140" fill="#6f7a8f" r="3" />
               <rect
                 fill="#dfe5ee"
                 height="5"
                 rx="2.5"
                 width={line === 4 ? 34 : 42}
                 x="204"
-                y="106.5"
+                y="137.5"
               />
             </g>
           ))}
         </g>
 
         <path
-          d="M138 113H160"
+          d="M138 142H158"
           fill="none"
           stroke="#2d86ff"
           strokeLinecap="round"
-          strokeWidth="2.5"
+          strokeWidth="2.3"
         />
         <path
-          d="M152 105L162 113L152 121"
+          d="M151 135L160 142L151 149"
           fill="none"
           stroke="#2d86ff"
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="2.5"
+          strokeWidth="2.3"
         />
         <path
-          d="M162 143H140"
+          d="M162 170H142"
           fill="none"
           stroke="#33bc84"
           strokeLinecap="round"
-          strokeWidth="2.5"
+          strokeWidth="2.3"
         />
         <path
-          d="M148 135L138 143L148 151"
+          d="M149 163L140 170L149 177"
           fill="none"
           stroke="#33bc84"
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="2.5"
+          strokeWidth="2.3"
         />
 
         <g fill="none" strokeLinecap="round" strokeWidth="2.5">
-          <path d="M265 43V57" stroke="#cbd6e4" />
-          <path d="M258 50H272" stroke="#cbd6e4" />
-          <path d="M26 167V181" stroke="#50a58d" />
-          <path d="M19 174H33" stroke="#50a58d" />
-          <path d="M41 45L47 51" stroke="#e8f3ff" />
-          <path d="M47 45L41 51" stroke="#e8f3ff" />
-          <path d="M35 200V212" stroke="#ffcc74" />
-          <path d="M29 206H41" stroke="#ffcc74" />
-          <path d="M270 190V202" stroke="#cbd6e4" />
-          <path d="M264 196H276" stroke="#cbd6e4" />
+          <path d="M262 66V80" stroke="#cbd6e4" />
+          <path d="M255 73H269" stroke="#cbd6e4" />
+          <path d="M26 208V222" stroke="#50a58d" />
+          <path d="M19 215H33" stroke="#50a58d" />
+          <path d="M42 80L48 86" stroke="#e8f3ff" />
+          <path d="M48 80L42 86" stroke="#e8f3ff" />
+          <path d="M36 250V262" stroke="#ffcc74" />
+          <path d="M30 256H42" stroke="#ffcc74" />
+          <path d="M270 226V238" stroke="#cbd6e4" />
+          <path d="M264 232H276" stroke="#cbd6e4" />
         </g>
         <circle
           cx="249"
-          cy="220"
+          cy="264"
           fill="none"
           r="5"
           stroke="#56c493"
