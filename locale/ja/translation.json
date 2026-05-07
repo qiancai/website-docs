@@ -42,6 +42,7 @@
     "tiupReleases": "TiUP リリース",
     "configComparison": "構成比較",
     "badge": {
+      "beta": "BETA",
       "preview": "Preview",
       "new": "新規"
     },
@@ -55,7 +56,7 @@
   },
   "configComparison": {
     "title": "TiDB 構成比較ツール",
-    "description": "選択した TiDB バージョン間でシステム変数とコンポーネント構成を比較します。",
+    "description": "TiDB のバージョン間でシステム変数とコンポーネント構成項目を比較し、新規、削除済み、変更済み、非推奨の内容を確認します。",
     "selectVersions": "TiDB バージョンを選択",
     "selectVersionsAndContent": "TiDB バージョンと比較対象を選択",
     "from": "比較元",
@@ -88,6 +89,9 @@
       "modified": "変更済み",
       "deprecated": "非推奨",
       "unchanged": "変更なし"
+    },
+    "summary": {
+      "total": "変更合計"
     },
     "table": {
       "status": "変更タイプ",

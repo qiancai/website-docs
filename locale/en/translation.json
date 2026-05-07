@@ -42,6 +42,7 @@
     "tiupReleases": "TiUP Releases",
     "configComparison": "Config Comparison",
     "badge": {
+      "beta": "BETA",
       "preview": "Preview",
       "new": "New"
     },
@@ -58,7 +59,7 @@
   },
   "configComparison": {
     "title": "TiDB Config Comparison Tool",
-    "description": "Compare TiDB system variables and component configuration across selected versions.",
+    "description": "Compare TiDB system variables and component configuration items across versions to identify what's new, removed, modified, and deprecated.",
     "selectVersions": "Select TiDB versions",
     "selectVersionsAndContent": "Select TiDB versions and comparison object",
     "from": "From",
@@ -91,6 +92,9 @@
       "modified": "Modified",
       "deprecated": "Deprecated",
       "unchanged": "Unchanged"
+    },
+    "summary": {
+      "total": "Total changed"
     },
     "table": {
       "status": "Change Type",
