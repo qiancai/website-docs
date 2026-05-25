@@ -1289,7 +1289,6 @@ function SummaryMetric(props: {
   label: string;
   value: number;
   suffix: string;
-  active: boolean;
   onClick: (status: FilterStatus) => void;
 }) {
   const tone = SUMMARY_TONE[props.status];
@@ -1306,9 +1305,7 @@ function SummaryMetric(props: {
         justifyContent: "flex-start",
         minHeight: { xs: "96px", md: "88px" },
         padding: { xs: "16px", md: "16px 20px" },
-        boxShadow: props.active ? `inset 0 -3px 0 ${COLORS.primary}` : "none",
         textAlign: "left",
-        transition: "box-shadow 120ms ease",
         WebkitTapHighlightColor: "transparent",
         width: "100%",
         "&:hover": {
@@ -1430,26 +1427,33 @@ function SummaryPanel(props: {
         width: "100%",
       }}
     >
-      {items.map((item) => (
-        <Paper
-          key={item.status}
-          variant="outlined"
-          sx={{
-            borderColor: COLORS.border,
-            borderRadius: "4px",
-            overflow: "hidden",
-          }}
-        >
-          <SummaryMetric
-            status={item.status}
-            label={item.label}
-            value={item.value}
-            suffix={props.suffix}
-            active={props.activeStatus === item.status}
-            onClick={props.onStatusChange}
-          />
-        </Paper>
-      ))}
+      {items.map((item) => {
+        const tone = SUMMARY_TONE[item.status];
+        const active = props.activeStatus === item.status;
+
+        return (
+          <Paper
+            key={item.status}
+            variant="outlined"
+            sx={{
+              backgroundColor: COLORS.surface,
+              borderColor: active ? tone.fg : COLORS.border,
+              borderRadius: "4px",
+              boxShadow: active ? `0 0 0 1px ${tone.fg}` : "none",
+              overflow: "hidden",
+              transition: "border-color 120ms ease, box-shadow 120ms ease",
+            }}
+          >
+            <SummaryMetric
+              status={item.status}
+              label={item.label}
+              value={item.value}
+              suffix={props.suffix}
+              onClick={props.onStatusChange}
+            />
+          </Paper>
+        );
+      })}
     </Box>
   );
 }
@@ -2674,16 +2678,16 @@ export default function ConfigComparison() {
                       backgroundColor: COLORS.surface,
                     },
                     "&.Mui-selected": {
-                      backgroundColor: COLORS.surface,
-                      borderColor: `${COLORS.borderSubtle} !important`,
-                      boxShadow: `inset 0 -3px 0 ${COLORS.primary}`,
-                      color: COLORS.text,
+                      backgroundColor: COLORS.text,
+                      borderColor: `${COLORS.text} !important`,
+                      boxShadow: "none",
+                      color: COLORS.surface,
                       fontWeight: 500,
                       "&:hover": {
-                        backgroundColor: COLORS.surface,
+                        backgroundColor: COLORS.text,
                       },
                       "&:active": {
-                        backgroundColor: COLORS.surface,
+                        backgroundColor: COLORS.text,
                       },
                     },
                   },
