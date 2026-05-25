@@ -1284,6 +1284,19 @@ function BreakableItemKey(props: { value: string }) {
   );
 }
 
+function BreakableText(props: { value: string }) {
+  return (
+    <>
+      {props.value.split(/([,;/=])/g).map((part, index) => (
+        <React.Fragment key={`${part}-${index}`}>
+          {part}
+          {/^[,;/=]$/.test(part) && <wbr />}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 function SummaryMetric(props: {
   status: FilterStatus;
   label: string;
@@ -1504,10 +1517,12 @@ function ChangeDetailList(props: { row: ComparisonRow }) {
                 display: "block",
                 fontSize: "13px",
                 marginTop: "2px",
+                overflowWrap: "anywhere",
                 whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
               }}
             >
-              {item.lines.join("\n")}
+              <BreakableText value={item.lines.join("\n")} />
             </Typography>
           )}
         </Box>
@@ -1784,24 +1799,28 @@ function ConfigComparisonTable(props: {
                 </TableCell>
                 <TableCell
                   sx={{
-                    whiteSpace: "pre-wrap",
                     color: COLORS.textSecondary,
                     fontSize: "13px",
                     maxWidth: 220,
+                    overflowWrap: "anywhere",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
                   }}
                 >
-                  {displayValue(row.from_value)}
+                  <BreakableText value={displayValue(row.from_value)} />
                 </TableCell>
                 <TableCell
                   sx={{
-                    whiteSpace: "pre-wrap",
                     color: valueChanged ? COLORS.text : COLORS.textSecondary,
                     fontSize: "13px",
                     maxWidth: 220,
                     fontWeight: valueChanged ? 500 : 400,
+                    overflowWrap: "anywhere",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
                   }}
                 >
-                  {displayValue(row.to_value)}
+                  <BreakableText value={displayValue(row.to_value)} />
                 </TableCell>
                 {props.showChangeDetails && (
                   <TableCell
@@ -1809,7 +1828,9 @@ function ConfigComparisonTable(props: {
                       color: COLORS.textSecondary,
                       fontSize: "13px",
                       maxWidth: 320,
+                      overflowWrap: "anywhere",
                       whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
                     }}
                   >
                     <ChangeDetailList row={row} />
@@ -1843,10 +1864,12 @@ function ConfigComparisonTable(props: {
                       color: COLORS.textSecondary,
                       fontSize: "13px",
                       maxWidth: 420,
+                      overflowWrap: "anywhere",
                       whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
                     }}
                   >
-                    {row.change_note || "-"}
+                    <BreakableText value={row.change_note || "-"} />
                     {row.change_note_version && row.change_note_url && (
                       <Typography sx={{ marginTop: "6px", fontSize: "12px" }}>
                         <Button
@@ -1872,9 +1895,15 @@ function ConfigComparisonTable(props: {
                   </TableCell>
                 )}
                 <TableCell
-                  sx={{ color: COLORS.textSecondary, fontSize: "13px" }}
+                  sx={{
+                    color: COLORS.textSecondary,
+                    fontSize: "13px",
+                    overflowWrap: "anywhere",
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                  }}
                 >
-                  {row.source}
+                  <BreakableText value={row.source} />
                 </TableCell>
               </TableRow>
             );
