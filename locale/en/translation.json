@@ -144,7 +144,8 @@
       "details": "Results will show new, removed, modified, deprecated, and behavior-changing items after you select a source version.",
       "popularComparisons": "Popular comparisons"
     },
-    "pagination": "Showing {{from}} to {{to}} of {{count}} {{suffix}}"
+    "pagination": "Showing {{from}} to {{to}} of {{count}} {{suffix}}",
+    "filterResultSummary": "Showing {{count}} of {{total}} {{suffix}}"
   },
   "footer": {
     "privacy": "Privacy Policy",

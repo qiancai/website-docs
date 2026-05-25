@@ -142,7 +142,8 @@
       "details": "选择源版本后，结果会展示新增、移除、修改、废弃以及行为变化的变量和配置项。",
       "popularComparisons": "常用对比"
     },
-    "pagination": "显示第 {{from}} 到 {{to}} 条，共 {{count}} {{suffix}}"
+    "pagination": "显示第 {{from}} 到 {{to}} 条，共 {{count}} {{suffix}}",
+    "filterResultSummary": "显示 {{count}} / {{total}} {{suffix}}"
   },
   "footer": {
     "privacy": "隐私政策",

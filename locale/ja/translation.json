@@ -141,7 +141,8 @@
       "details": "比較元を選択すると、新規、削除済み、変更済み、非推奨、動作変更のある項目が表示されます。",
       "popularComparisons": "よく使う比較"
     },
-    "pagination": "{{count}} {{suffix}}中 {{from}} から {{to}} を表示"
+    "pagination": "{{count}} {{suffix}}中 {{from}} から {{to}} を表示",
+    "filterResultSummary": "{{total}} {{suffix}}中 {{count}} 件を表示"
   },
   "footer": {
     "privacy": "Privacy Policy",

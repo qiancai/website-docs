@@ -1471,6 +1471,87 @@ function SummaryPanel(props: {
   );
 }
 
+function StatusFilterButtons(props: {
+  value: FilterStatus;
+  count: number;
+  total: number;
+  suffix: string;
+  onChange: (status: FilterStatus) => void;
+}) {
+  const { t } = useI18next();
+  const options: FilterStatus[] = ["changed", ...STATUS_FILTER_ORDER];
+
+  return (
+    <Stack
+      direction="row"
+      spacing={1}
+      alignItems="center"
+      sx={{
+        flex: "1 1 auto",
+        flexWrap: "wrap",
+        minWidth: { xs: "100%", md: 0 },
+        rowGap: 1,
+      }}
+    >
+      {options.map((status) => {
+        const active = props.value === status;
+        const tone = SUMMARY_TONE[status];
+        const label =
+          status === "changed"
+            ? t("configComparison.status.all")
+            : t(`configComparison.status.${status}`);
+
+        return (
+          <Button
+            key={status}
+            disableRipple
+            variant="outlined"
+            onClick={() => props.onChange(status)}
+            sx={{
+              backgroundColor: active ? tone.fg : COLORS.surface,
+              borderColor: active ? tone.fg : COLORS.border,
+              borderRadius: "999px",
+              color: active ? COLORS.surface : COLORS.textSecondary,
+              fontWeight: 500,
+              height: "40px",
+              minWidth: 0,
+              padding: "8px 18px",
+              textTransform: "none",
+              whiteSpace: "nowrap",
+              "&:hover": {
+                backgroundColor: active ? tone.fg : COLORS.surfaceAlt,
+                borderColor: active ? tone.fg : tone.fg,
+                color: active ? COLORS.surface : COLORS.text,
+              },
+              "&:focus-visible": {
+                outline: `2px solid ${COLORS.accent}`,
+                outlineOffset: "2px",
+              },
+            }}
+          >
+            {label}
+          </Button>
+        );
+      })}
+      <Typography
+        sx={{
+          color: COLORS.textSecondary,
+          fontSize: "14px",
+          lineHeight: "20px",
+          marginLeft: { md: "8px !important" },
+          whiteSpace: "nowrap",
+        }}
+      >
+        {formatTemplate(t("configComparison.filterResultSummary"), {
+          count: props.count.toLocaleString(),
+          suffix: props.suffix,
+          total: props.total.toLocaleString(),
+        })}
+      </Typography>
+    </Stack>
+  );
+}
+
 function ChangeDetailList(props: { row: ComparisonRow }) {
   const { t } = useI18next();
   const items = buildChangeDetailItems(props.row, t);
@@ -1528,64 +1609,6 @@ function ChangeDetailList(props: { row: ComparisonRow }) {
         </Box>
       ))}
     </Box>
-  );
-}
-
-function SelectFilter(props: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-  optionLabel?: (value: string) => string;
-  minWidth?: number;
-  includeAll?: boolean;
-  emptyLabel?: string;
-  emptyValue?: string;
-}) {
-  const { t } = useI18next();
-  const emptyValue = props.emptyValue ?? "all";
-  return (
-    <FormControl
-      size="small"
-      sx={{ minWidth: { xs: "100%", md: props.minWidth || 150 } }}
-    >
-      <Select
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-        displayEmpty
-        sx={{
-          backgroundColor: COLORS.surface,
-          borderRadius: 0,
-          color: COLORS.text,
-          fontSize: "14px",
-          height: { xs: "44px", md: "40px" },
-          "& .MuiOutlinedInput-notchedOutline": {
-            borderColor: COLORS.borderSubtle,
-          },
-          "&:hover .MuiOutlinedInput-notchedOutline": {
-            borderColor: COLORS.border,
-          },
-          "&.Mui-focused": {
-            boxShadow: "0 0 0 3px rgba(20, 128, 184, 0.1)",
-          },
-          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-            borderColor: COLORS.accent,
-          },
-        }}
-      >
-        {props.includeAll !== false && (
-          <MenuItem value={emptyValue}>
-            {props.emptyLabel ||
-              `${props.label}: ${t("configComparison.filters.all")}`}
-          </MenuItem>
-        )}
-        {props.options.map((option) => (
-          <MenuItem key={option} value={option}>
-            {props.label}: {props.optionLabel?.(option) || option}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
   );
 }
 
@@ -2790,17 +2813,12 @@ export default function ConfigComparison() {
                 ),
               }}
             />
-            <SelectFilter
-              label={t("configComparison.filters.status")}
+            <StatusFilterButtons
               value={filterStatus}
-              options={STATUS_FILTER_ORDER}
-              onChange={(value) => setFilterStatus(value as FilterStatus)}
-              optionLabel={(value) =>
-                t(`configComparison.status.${value as FilterStatus}`)
-              }
-              minWidth={146}
-              emptyLabel={t("configComparison.filters.status")}
-              emptyValue="changed"
+              count={filteredRows.length}
+              total={comparison?.rows.length || 0}
+              suffix={summarySuffix}
+              onChange={setFilterStatus}
             />
             <Button
               variant="outlined"
