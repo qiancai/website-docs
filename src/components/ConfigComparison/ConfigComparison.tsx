@@ -133,6 +133,12 @@ interface ComparisonRow {
   to_value_type?: string | null;
   from_value?: unknown;
   to_value?: unknown;
+  from_min_value?: unknown;
+  to_min_value?: unknown;
+  from_max_value?: unknown;
+  to_max_value?: unknown;
+  from_possible_values?: unknown;
+  to_possible_values?: unknown;
   field_changes: Record<string, { from: unknown; to: unknown }>;
   is_deprecated: boolean;
   deprecated_since?: string | null;
@@ -190,6 +196,8 @@ const COLORS = {
   purple: "#9E4EC4",
   purpleBorder: "rgba(158, 78, 196, 0.28)",
   purpleSoft: "rgba(158, 78, 196, 0.06)",
+  valueAdded: "#18853B",
+  valueRemoved: "#C43225",
   surface: "#FFFFFF",
   surfaceAlt: "#F9F9FB",
   text: "var(--tiui-palette-carbon-900)",
@@ -299,15 +307,10 @@ const CHANGE_DETAIL_TITLE_KEYS: Record<string, string> = {
 };
 
 const SYSTEM_COMPARE_FIELDS = [
-  "VARIABLE_SCOPE",
   "DEFAULT_VALUE",
   "MIN_VALUE",
   "MAX_VALUE",
   "POSSIBLE_VALUES",
-  "PERSISTS_TO_CLUSTER",
-  "DOC_TYPE",
-  "DOC_RANGE",
-  "PURPOSE",
 ] as const;
 
 function createEmptySummary(): ComparisonSummary {
@@ -945,6 +948,12 @@ function compare(
         to_value_type: toValueType,
         from_value: fromValue,
         to_value: toValue,
+        from_min_value: fromVariable?.MIN_VALUE,
+        to_min_value: toVariable?.MIN_VALUE,
+        from_max_value: fromVariable?.MAX_VALUE,
+        to_max_value: toVariable?.MAX_VALUE,
+        from_possible_values: fromVariable?.POSSIBLE_VALUES,
+        to_possible_values: toVariable?.POSSIBLE_VALUES,
         field_changes: changes,
         is_deprecated: isDeprecated,
         deprecated_since: isDeprecated ? activeDeprecatedSince : null,
@@ -1170,6 +1179,12 @@ function downloadCsv(
     "value_type",
     "from_value",
     "to_value",
+    "from_min_value",
+    "to_min_value",
+    "from_max_value",
+    "to_max_value",
+    "from_possible_values",
+    "to_possible_values",
     "changed_fields",
     "is_deprecated",
     "deprecated_since",
@@ -1247,6 +1262,7 @@ function ChangeTypeChips(props: { row: ComparisonRow }) {
     <Stack
       direction="row"
       alignItems="center"
+      justifyContent="center"
       sx={{ flexWrap: "wrap", rowGap: 0.5 }}
     >
       {statuses.map((status, index) => (
@@ -1295,6 +1311,10 @@ function BreakableText(props: { value: string }) {
       ))}
     </>
   );
+}
+
+function BreakableValue(props: { value: unknown }) {
+  return <BreakableText value={displayValue(props.value)} />;
 }
 
 function SummaryMetric(props: {
@@ -1617,6 +1637,7 @@ function ConfigComparisonTable(props: {
   fromVersion: string;
   toVersion: string;
   contentType: ContentTypeId;
+  filterStatus: FilterStatus;
   showChangeDetails: boolean;
   showChangeNote: boolean;
   itemSortDirection: SortDirection;
@@ -1636,18 +1657,252 @@ function ConfigComparisonTable(props: {
       </Box>
     );
   }
-  const valueColumnLabel =
-    props.contentType === "system_variables"
-      ? t("configComparison.table.default")
-      : t("configComparison.table.value");
-  const itemColumnLabel =
-    props.contentType === "system_variables"
-      ? t("configComparison.table.systemVariable")
-      : t("configComparison.table.item");
-  const tableMinWidth =
-    700 +
-    (props.showChangeDetails ? 120 : 0) +
-    (props.showChangeNote ? 140 : 0);
+  const isSystemVariables = props.contentType === "system_variables";
+  type ValueTone = "added" | "removed" | "changed" | "default";
+  const renderValueCell = (
+    value: unknown,
+    tone: ValueTone = "default",
+    maxWidth = 220,
+    key?: React.Key
+  ) => (
+    <TableCell
+      key={key}
+      sx={{
+        color:
+          tone === "added"
+            ? COLORS.valueAdded
+            : tone === "removed"
+            ? COLORS.valueRemoved
+            : tone === "changed"
+            ? COLORS.text
+            : COLORS.textSecondary,
+        fontSize: "13px",
+        fontWeight: 400,
+        maxWidth,
+        overflowWrap: "anywhere",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+      }}
+    >
+      <BreakableValue value={value} />
+    </TableCell>
+  );
+  const renderDeprecatedCell = (row: ComparisonRow) => (
+    <TableCell>
+      {row.is_deprecated ? (
+        <StatusChip status="deprecated" count={undefined} />
+      ) : (
+        <Typography sx={{ color: COLORS.textTertiary, fontSize: "13px" }}>
+          {t("configComparison.table.no")}
+        </Typography>
+      )}
+      {row.deprecated_since && (
+        <Typography
+          sx={{
+            color: COLORS.textTertiary,
+            fontSize: "12px",
+            marginTop: "4px",
+          }}
+        >
+          {row.deprecated_since}
+        </Typography>
+      )}
+    </TableCell>
+  );
+  const renderReleaseNotesCell = (row: ComparisonRow) => (
+    <TableCell
+      sx={{
+        color: COLORS.textSecondary,
+        fontSize: "13px",
+        maxWidth: isSystemVariables ? 360 : 420,
+        overflowWrap: "anywhere",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+      }}
+    >
+      <BreakableText value={row.change_note || "-"} />
+      {row.change_note_version && row.change_note_url && (
+        <Typography sx={{ marginTop: "6px", fontSize: "12px" }}>
+          <Button
+            component="a"
+            href={row.change_note_url}
+            target="_blank"
+            rel="noreferrer"
+            size="small"
+            endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+            sx={{
+              color: COLORS.accent,
+              fontSize: "12px",
+              fontWeight: 500,
+              minWidth: 0,
+              padding: 0,
+              textTransform: "none",
+            }}
+          >
+            {row.change_note_version}
+          </Button>
+        </Typography>
+      )}
+    </TableCell>
+  );
+  const renderItemCell = (row: ComparisonRow) => (
+    <TableCell
+      sx={{
+        fontFamily: "monospace",
+        fontSize: "13px",
+        maxWidth: isSystemVariables ? 220 : 360,
+        minWidth: isSystemVariables ? 0 : 300,
+        whiteSpace: "normal",
+        width: isSystemVariables ? 210 : 300,
+      }}
+    >
+      <Box
+        sx={{
+          alignItems: "flex-start",
+          display: "flex",
+          gap: "6px",
+          lineHeight: "20px",
+          maxWidth: "100%",
+        }}
+      >
+        {row.doc_link ? (
+          <Box
+            component="a"
+            href={row.doc_link}
+            sx={{
+              color: COLORS.accent,
+              display: "block",
+              flex: "0 1 auto",
+              fontFamily: "monospace",
+              fontSize: "13px",
+              minWidth: 0,
+              overflowWrap: "break-word",
+              textDecoration: "none",
+              whiteSpace: "normal",
+              wordBreak: "normal",
+              "&:hover": {
+                color: COLORS.accentDark,
+                textDecoration: "underline",
+              },
+            }}
+          >
+            <BreakableItemKey value={row.item_key} />
+          </Box>
+        ) : (
+          <Typography
+            component="span"
+            sx={{
+              color: COLORS.text,
+              display: "block",
+              flex: "0 1 auto",
+              fontFamily: "monospace",
+              fontSize: "13px",
+              minWidth: 0,
+              overflowWrap: "break-word",
+              whiteSpace: "normal",
+              wordBreak: "normal",
+            }}
+          >
+            <BreakableItemKey value={row.item_key} />
+          </Typography>
+        )}
+        <CopyBtn
+          content={row.item_key}
+          disableRipple
+          sx={{
+            color: "var(--tiui-palette-carbon-500)",
+            flex: "0 0 auto",
+            fontSize: "14px",
+            height: "20px",
+            padding: "2px",
+            position: "static",
+            width: "20px",
+            "&:active": {
+              backgroundColor: "transparent",
+            },
+            "&:hover": {
+              backgroundColor: "transparent",
+              color: COLORS.text,
+            },
+          }}
+        />
+      </Box>
+      {isSystemVariables && row.is_deprecated && (
+        <Typography
+          sx={{
+            color: COLORS.textTertiary,
+            fontFamily: "inherit",
+            fontSize: "12px",
+            lineHeight: "18px",
+            marginTop: "4px",
+          }}
+        >
+          {formatTemplate(t("configComparison.table.deprecatedIn"), {
+            version:
+              row.deprecated_since ||
+              row.deprecated_since_versions[0] ||
+              row.change_note_version ||
+              "-",
+          })}
+        </Typography>
+      )}
+    </TableCell>
+  );
+  const valueColumnLabel = isSystemVariables
+    ? t("configComparison.table.default")
+    : t("configComparison.table.value");
+  const itemColumnLabel = isSystemVariables
+    ? t("configComparison.table.systemVariable")
+    : t("configComparison.table.item");
+  const systemVersionColumnMode =
+    props.filterStatus === "new"
+      ? "to"
+      : props.filterStatus === "removed"
+      ? "from"
+      : "both";
+  const systemVersionColumns =
+    systemVersionColumnMode === "to"
+      ? [{ key: "to", label: props.toVersion }]
+      : systemVersionColumnMode === "from"
+      ? [{ key: "from", label: props.fromVersion }]
+      : [
+          { key: "from", label: props.fromVersion },
+          { key: "to", label: props.toVersion },
+        ];
+  const systemVersionColumnCount = systemVersionColumns.length;
+  const systemValueColumnWidth = systemVersionColumnCount === 1 ? 138 : 108;
+  const systemPossibleValuesColumnWidth =
+    systemVersionColumnCount === 1 ? 138 : 108;
+  const systemColumns = [
+    88,
+    210,
+    ...Array(3 * systemVersionColumnCount).fill(systemValueColumnWidth),
+    ...Array(systemVersionColumnCount).fill(systemPossibleValuesColumnWidth),
+    176,
+  ];
+  const systemTableDividerSelector =
+    systemVersionColumnCount === 1
+      ? "& tbody td:nth-of-type(1), & tbody td:nth-of-type(2), & tbody td:nth-of-type(3), & tbody td:nth-of-type(4), & tbody td:nth-of-type(5), & tbody td:nth-of-type(6), & thead tr:nth-of-type(1) th:nth-of-type(1), & thead tr:nth-of-type(1) th:nth-of-type(2), & thead tr:nth-of-type(1) th:nth-of-type(3), & thead tr:nth-of-type(1) th:nth-of-type(4), & thead tr:nth-of-type(1) th:nth-of-type(5), & thead tr:nth-of-type(1) th:nth-of-type(6), & thead tr:nth-of-type(2) th:nth-of-type(1), & thead tr:nth-of-type(2) th:nth-of-type(2), & thead tr:nth-of-type(2) th:nth-of-type(3), & thead tr:nth-of-type(2) th:nth-of-type(4)"
+      : "& tbody td:nth-of-type(1), & tbody td:nth-of-type(2), & tbody td:nth-of-type(4), & tbody td:nth-of-type(6), & tbody td:nth-of-type(8), & tbody td:nth-of-type(10), & thead tr:nth-of-type(1) th:nth-of-type(1), & thead tr:nth-of-type(1) th:nth-of-type(2), & thead tr:nth-of-type(1) th:nth-of-type(3), & thead tr:nth-of-type(1) th:nth-of-type(4), & thead tr:nth-of-type(1) th:nth-of-type(5), & thead tr:nth-of-type(1) th:nth-of-type(6), & thead tr:nth-of-type(2) th:nth-of-type(2), & thead tr:nth-of-type(2) th:nth-of-type(4), & thead tr:nth-of-type(2) th:nth-of-type(6), & thead tr:nth-of-type(2) th:nth-of-type(8)";
+  const tableMinWidth = isSystemVariables
+    ? systemVersionColumnCount === 1
+      ? 1025
+      : 1345
+    : 700 +
+      (props.showChangeDetails ? 120 : 0) +
+      (props.showChangeNote ? 140 : 0);
+  const systemHeaderGroupRowHeight = 42;
+  const systemHeaderVersionRowHeight = 40;
+  const headerCellSx = isSystemVariables
+    ? {
+        backgroundColor: COLORS.surfaceAlt,
+        backgroundClip: "padding-box",
+        borderBottom: `1px solid ${COLORS.borderSubtle}`,
+        boxSizing: "border-box" as const,
+        position: "sticky" as const,
+        zIndex: 10,
+      }
+    : undefined;
 
   return (
     <TableContainer
@@ -1655,64 +1910,253 @@ function ConfigComparisonTable(props: {
         backgroundColor: COLORS.surface,
         border: `1px solid ${COLORS.borderSubtle}`,
         borderRadius: 0,
-        overflowX: "auto",
+        maxHeight: isSystemVariables ? "calc(100vh - 144px)" : "none",
+        overflow: isSystemVariables ? "auto" : "auto hidden",
       }}
     >
-      <Table size="small" sx={{ minWidth: tableMinWidth }}>
+      <Table
+        size="small"
+        sx={{
+          borderCollapse: isSystemVariables ? "separate" : "collapse",
+          borderSpacing: 0,
+          minWidth: tableMinWidth,
+          tableLayout: isSystemVariables ? "fixed" : "auto",
+          width: "100%",
+          ...(isSystemVariables
+            ? {
+                [systemTableDividerSelector]: {
+                  borderRight: `1px solid ${COLORS.border}`,
+                },
+                "& thead .MuiTableCell-root": {
+                  paddingBottom: 0,
+                  paddingTop: 0,
+                },
+              }
+            : {}),
+        }}
+      >
+        {isSystemVariables && (
+          <colgroup>
+            {systemColumns.map((width, index) => (
+              <col key={`${index}-${width}`} style={{ width }} />
+            ))}
+          </colgroup>
+        )}
         <TableHead>
-          <TableRow
-            sx={{
-              backgroundColor: COLORS.surfaceAlt,
-              "& .MuiTableCell-root": {
-                color: COLORS.text,
-                fontSize: "13px",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-              },
-            }}
-          >
-            <TableCell>{t("configComparison.table.status")}</TableCell>
-            <TableCell
-              sortDirection={props.itemSortDirection}
-              sx={{ minWidth: 300, width: 300 }}
-            >
-              <TableSortLabel
-                active
-                direction={props.itemSortDirection}
-                hideSortIcon={false}
-                onClick={props.onItemSortDirectionChange}
+          {isSystemVariables ? (
+            <>
+              <TableRow
                 sx={{
-                  color: `${COLORS.text} !important`,
-                  "& .MuiTableSortLabel-icon": {
-                    color: `${COLORS.textTertiary} !important`,
-                    fontSize: "16px",
-                    marginLeft: "4px",
-                    opacity: 1,
-                  },
-                  "&:focus-visible": {
-                    outline: `2px solid ${COLORS.accent}`,
-                    outlineOffset: "2px",
+                  backgroundColor: COLORS.surfaceAlt,
+                  "& .MuiTableCell-root": {
+                    borderColor: COLORS.border,
+                    color: COLORS.text,
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
                   },
                 }}
               >
-                {itemColumnLabel}
-              </TableSortLabel>
-            </TableCell>
-            <TableCell>
-              {valueColumnLabel} ({props.fromVersion})
-            </TableCell>
-            <TableCell>
-              {valueColumnLabel} ({props.toVersion})
-            </TableCell>
-            {props.showChangeDetails && (
-              <TableCell>{t("configComparison.table.changeDetails")}</TableCell>
-            )}
-            <TableCell>{t("configComparison.table.deprecated")}</TableCell>
-            {props.showChangeNote && (
-              <TableCell>{t("configComparison.table.changeNote")}</TableCell>
-            )}
-            <TableCell>{t("configComparison.table.source")}</TableCell>
-          </TableRow>
+                <TableCell
+                  rowSpan={2}
+                  sx={{
+                    ...headerCellSx,
+                    height:
+                      systemHeaderGroupRowHeight + systemHeaderVersionRowHeight,
+                    lineHeight: `${
+                      systemHeaderGroupRowHeight + systemHeaderVersionRowHeight
+                    }px`,
+                    top: 0,
+                  }}
+                >
+                  {t("configComparison.table.status")}
+                </TableCell>
+                <TableCell
+                  rowSpan={2}
+                  sortDirection={props.itemSortDirection}
+                  sx={{
+                    minWidth: 0,
+                    textAlign: "left !important",
+                    width: 210,
+                    ...headerCellSx,
+                    height:
+                      systemHeaderGroupRowHeight + systemHeaderVersionRowHeight,
+                    lineHeight: `${
+                      systemHeaderGroupRowHeight + systemHeaderVersionRowHeight
+                    }px`,
+                    top: 0,
+                    zIndex: 11,
+                  }}
+                >
+                  <TableSortLabel
+                    active
+                    direction={props.itemSortDirection}
+                    hideSortIcon={false}
+                    onClick={props.onItemSortDirectionChange}
+                    sx={{
+                      color: `${COLORS.text} !important`,
+                      "& .MuiTableSortLabel-icon": {
+                        color: `${COLORS.textTertiary} !important`,
+                        fontSize: "16px",
+                        marginLeft: "4px",
+                        opacity: 1,
+                      },
+                      "&:focus-visible": {
+                        outline: `2px solid ${COLORS.accent}`,
+                        outlineOffset: "2px",
+                      },
+                    }}
+                  >
+                    {itemColumnLabel}
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell
+                  colSpan={systemVersionColumnCount}
+                  sx={{
+                    ...headerCellSx,
+                    height: systemHeaderGroupRowHeight,
+                    lineHeight: `${systemHeaderGroupRowHeight}px`,
+                    top: 0,
+                  }}
+                >
+                  {valueColumnLabel}
+                </TableCell>
+                <TableCell
+                  colSpan={systemVersionColumnCount}
+                  sx={{
+                    ...headerCellSx,
+                    height: systemHeaderGroupRowHeight,
+                    lineHeight: `${systemHeaderGroupRowHeight}px`,
+                    top: 0,
+                  }}
+                >
+                  {t("configComparison.table.min")}
+                </TableCell>
+                <TableCell
+                  colSpan={systemVersionColumnCount}
+                  sx={{
+                    ...headerCellSx,
+                    height: systemHeaderGroupRowHeight,
+                    lineHeight: `${systemHeaderGroupRowHeight}px`,
+                    top: 0,
+                  }}
+                >
+                  {t("configComparison.table.max")}
+                </TableCell>
+                <TableCell
+                  colSpan={systemVersionColumnCount}
+                  sx={{
+                    ...headerCellSx,
+                    height: systemHeaderGroupRowHeight,
+                    lineHeight: `${systemHeaderGroupRowHeight}px`,
+                    top: 0,
+                  }}
+                >
+                  {t("configComparison.table.possibleValues")}
+                </TableCell>
+                <TableCell
+                  rowSpan={2}
+                  sx={{
+                    ...headerCellSx,
+                    height:
+                      systemHeaderGroupRowHeight + systemHeaderVersionRowHeight,
+                    lineHeight: `${
+                      systemHeaderGroupRowHeight + systemHeaderVersionRowHeight
+                    }px`,
+                    top: 0,
+                  }}
+                >
+                  {t("configComparison.table.relatedReleaseNotes")}
+                </TableCell>
+              </TableRow>
+              <TableRow
+                sx={{
+                  backgroundColor: COLORS.surfaceAlt,
+                  "& .MuiTableCell-root": {
+                    borderColor: COLORS.border,
+                    color: COLORS.text,
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                  },
+                }}
+              >
+                {["default", "min", "max", "possibleValues"].flatMap((group) =>
+                  systemVersionColumns.map((column) => (
+                    <TableCell
+                      key={`${group}-${column.key}`}
+                      sx={{
+                        ...headerCellSx,
+                        height: systemHeaderVersionRowHeight,
+                        lineHeight: `${systemHeaderVersionRowHeight}px`,
+                        top: systemHeaderGroupRowHeight,
+                      }}
+                    >
+                      {column.label}
+                    </TableCell>
+                  ))
+                )}
+              </TableRow>
+            </>
+          ) : (
+            <TableRow
+              sx={{
+                backgroundColor: COLORS.surfaceAlt,
+                "& .MuiTableCell-root": {
+                  color: COLORS.text,
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                },
+              }}
+            >
+              <TableCell>{t("configComparison.table.status")}</TableCell>
+              <TableCell
+                sortDirection={props.itemSortDirection}
+                sx={{ minWidth: 300, width: 300 }}
+              >
+                <TableSortLabel
+                  active
+                  direction={props.itemSortDirection}
+                  hideSortIcon={false}
+                  onClick={props.onItemSortDirectionChange}
+                  sx={{
+                    color: `${COLORS.text} !important`,
+                    "& .MuiTableSortLabel-icon": {
+                      color: `${COLORS.textTertiary} !important`,
+                      fontSize: "16px",
+                      marginLeft: "4px",
+                      opacity: 1,
+                    },
+                    "&:focus-visible": {
+                      outline: `2px solid ${COLORS.accent}`,
+                      outlineOffset: "2px",
+                    },
+                  }}
+                >
+                  {itemColumnLabel}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                {valueColumnLabel} ({props.fromVersion})
+              </TableCell>
+              <TableCell>
+                {valueColumnLabel} ({props.toVersion})
+              </TableCell>
+              {props.showChangeDetails && (
+                <TableCell>
+                  {t("configComparison.table.changeDetails")}
+                </TableCell>
+              )}
+              <TableCell>{t("configComparison.table.deprecated")}</TableCell>
+              {props.showChangeNote && (
+                <TableCell>{t("configComparison.table.changeNote")}</TableCell>
+              )}
+              <TableCell>{t("configComparison.table.source")}</TableCell>
+            </TableRow>
+          )}
         </TableHead>
         <TableBody>
           {props.rows.map((row) => {
@@ -1720,6 +2164,112 @@ function ConfigComparisonTable(props: {
               row,
               props.contentType
             );
+            if (isSystemVariables) {
+              const colorChangedValues = row.status === "modified";
+              const minChanged = Object.prototype.hasOwnProperty.call(
+                row.field_changes,
+                "MIN_VALUE"
+              );
+              const maxChanged = Object.prototype.hasOwnProperty.call(
+                row.field_changes,
+                "MAX_VALUE"
+              );
+              const possibleValuesChanged =
+                Object.prototype.hasOwnProperty.call(
+                  row.field_changes,
+                  "POSSIBLE_VALUES"
+                );
+              const renderSystemValueCells = (
+                key: string,
+                fromValue: unknown,
+                toValue: unknown,
+                changed: boolean,
+                maxWidth: number
+              ) => {
+                if (systemVersionColumnMode === "to") {
+                  return renderValueCell(
+                    toValue,
+                    colorChangedValues && changed ? "added" : "default",
+                    maxWidth,
+                    `${key}-to`
+                  );
+                }
+                if (systemVersionColumnMode === "from") {
+                  return renderValueCell(
+                    fromValue,
+                    colorChangedValues && changed ? "removed" : "default",
+                    maxWidth,
+                    `${key}-from`
+                  );
+                }
+                return [
+                  renderValueCell(
+                    fromValue,
+                    colorChangedValues && changed ? "removed" : "default",
+                    maxWidth,
+                    `${key}-from`
+                  ),
+                  renderValueCell(
+                    toValue,
+                    colorChangedValues && changed ? "added" : "default",
+                    maxWidth,
+                    `${key}-to`
+                  ),
+                ];
+              };
+
+              return (
+                <TableRow
+                  hover
+                  key={`${row.content_type}-${row.item_key}`}
+                  sx={{
+                    "&:hover": {
+                      backgroundColor: "var(--tiui-palette-peacock-50)",
+                    },
+                    "& .MuiTableCell-root": {
+                      borderColor: COLORS.borderSubtle,
+                      paddingBottom: "14px",
+                      paddingTop: "14px",
+                    },
+                  }}
+                >
+                  <TableCell sx={{ textAlign: "center" }}>
+                    <ChangeTypeChips row={row} />
+                  </TableCell>
+                  {renderItemCell(row)}
+                  {renderSystemValueCells(
+                    "default",
+                    row.from_value,
+                    row.to_value,
+                    valueChanged,
+                    96
+                  )}
+                  {renderSystemValueCells(
+                    "min",
+                    row.from_min_value,
+                    row.to_min_value,
+                    minChanged,
+                    96
+                  )}
+                  {renderSystemValueCells(
+                    "max",
+                    row.from_max_value,
+                    row.to_max_value,
+                    maxChanged,
+                    96
+                  )}
+                  {renderSystemValueCells(
+                    "possibleValues",
+                    row.from_possible_values,
+                    row.to_possible_values,
+                    possibleValuesChanged,
+                    160
+                  )}
+                  {renderReleaseNotesCell(row)}
+                </TableRow>
+              );
+            }
+
             return (
               <TableRow
                 hover
@@ -1735,116 +2285,15 @@ function ConfigComparisonTable(props: {
                   },
                 }}
               >
-                <TableCell>
+                <TableCell sx={{ textAlign: "center" }}>
                   <ChangeTypeChips row={row} />
                 </TableCell>
-                <TableCell
-                  sx={{
-                    fontFamily: "monospace",
-                    fontSize: "13px",
-                    maxWidth: 360,
-                    minWidth: 300,
-                    whiteSpace: "normal",
-                    width: 300,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      alignItems: "flex-start",
-                      display: "flex",
-                      gap: "6px",
-                      lineHeight: "20px",
-                      maxWidth: "100%",
-                    }}
-                  >
-                    {row.doc_link ? (
-                      <Box
-                        component="a"
-                        href={row.doc_link}
-                        sx={{
-                          color: COLORS.accent,
-                          display: "block",
-                          flex: "0 1 auto",
-                          fontFamily: "monospace",
-                          fontSize: "13px",
-                          minWidth: 0,
-                          overflowWrap: "break-word",
-                          textDecoration: "none",
-                          whiteSpace: "normal",
-                          wordBreak: "normal",
-                          "&:hover": {
-                            color: COLORS.accentDark,
-                            textDecoration: "underline",
-                          },
-                        }}
-                      >
-                        <BreakableItemKey value={row.item_key} />
-                      </Box>
-                    ) : (
-                      <Typography
-                        component="span"
-                        sx={{
-                          color: COLORS.text,
-                          display: "block",
-                          flex: "0 1 auto",
-                          fontFamily: "monospace",
-                          fontSize: "13px",
-                          minWidth: 0,
-                          overflowWrap: "break-word",
-                          whiteSpace: "normal",
-                          wordBreak: "normal",
-                        }}
-                      >
-                        <BreakableItemKey value={row.item_key} />
-                      </Typography>
-                    )}
-                    <CopyBtn
-                      content={row.item_key}
-                      disableRipple
-                      sx={{
-                        color: "var(--tiui-palette-carbon-500)",
-                        flex: "0 0 auto",
-                        fontSize: "14px",
-                        height: "20px",
-                        padding: "2px",
-                        position: "static",
-                        width: "20px",
-                        "&:active": {
-                          backgroundColor: "transparent",
-                        },
-                        "&:hover": {
-                          backgroundColor: "transparent",
-                          color: COLORS.text,
-                        },
-                      }}
-                    />
-                  </Box>
-                </TableCell>
-                <TableCell
-                  sx={{
-                    color: COLORS.textSecondary,
-                    fontSize: "13px",
-                    maxWidth: 220,
-                    overflowWrap: "anywhere",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <BreakableText value={displayValue(row.from_value)} />
-                </TableCell>
-                <TableCell
-                  sx={{
-                    color: valueChanged ? COLORS.text : COLORS.textSecondary,
-                    fontSize: "13px",
-                    maxWidth: 220,
-                    fontWeight: valueChanged ? 500 : 400,
-                    overflowWrap: "anywhere",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <BreakableText value={displayValue(row.to_value)} />
-                </TableCell>
+                {renderItemCell(row)}
+                {renderValueCell(row.from_value)}
+                {renderValueCell(
+                  row.to_value,
+                  valueChanged ? "changed" : "default"
+                )}
                 {props.showChangeDetails && (
                   <TableCell
                     sx={{
@@ -1859,64 +2308,8 @@ function ConfigComparisonTable(props: {
                     <ChangeDetailList row={row} />
                   </TableCell>
                 )}
-                <TableCell>
-                  {row.is_deprecated ? (
-                    <StatusChip status="deprecated" count={undefined} />
-                  ) : (
-                    <Typography
-                      sx={{ color: COLORS.textTertiary, fontSize: "13px" }}
-                    >
-                      {t("configComparison.table.no")}
-                    </Typography>
-                  )}
-                  {row.deprecated_since && (
-                    <Typography
-                      sx={{
-                        color: COLORS.textTertiary,
-                        fontSize: "12px",
-                        marginTop: "4px",
-                      }}
-                    >
-                      {row.deprecated_since}
-                    </Typography>
-                  )}
-                </TableCell>
-                {props.showChangeNote && (
-                  <TableCell
-                    sx={{
-                      color: COLORS.textSecondary,
-                      fontSize: "13px",
-                      maxWidth: 420,
-                      overflowWrap: "anywhere",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    <BreakableText value={row.change_note || "-"} />
-                    {row.change_note_version && row.change_note_url && (
-                      <Typography sx={{ marginTop: "6px", fontSize: "12px" }}>
-                        <Button
-                          component="a"
-                          href={row.change_note_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          size="small"
-                          endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
-                          sx={{
-                            color: COLORS.accent,
-                            fontSize: "12px",
-                            fontWeight: 500,
-                            minWidth: 0,
-                            padding: 0,
-                            textTransform: "none",
-                          }}
-                        >
-                          {row.change_note_version}
-                        </Button>
-                      </Typography>
-                    )}
-                  </TableCell>
-                )}
+                {renderDeprecatedCell(row)}
+                {props.showChangeNote && renderReleaseNotesCell(row)}
                 <TableCell
                   sx={{
                     color: COLORS.textSecondary,
@@ -2421,6 +2814,7 @@ export default function ConfigComparison() {
   }
 
   const hasComparison = !!comparison;
+  const isSystemVariables = contentType === "system_variables";
   const summary = comparison?.summary || createEmptySummary();
   const versionLabel = (version: VersionInfo) =>
     `${version.version}${
@@ -2458,8 +2852,11 @@ export default function ConfigComparison() {
       sx={{
         boxSizing: "border-box",
         marginX: "auto",
-        maxWidth: "1360px",
-        padding: { xs: "20px 16px", md: "32px 32px 64px" },
+        maxWidth: isSystemVariables ? "1680px" : "1360px",
+        padding: {
+          xs: "20px 16px",
+          md: "32px 32px 64px",
+        },
         width: "100%",
       }}
     >
@@ -2858,6 +3255,7 @@ export default function ConfigComparison() {
             fromVersion={fromVersion}
             toVersion={toVersion}
             contentType={contentType}
+            filterStatus={filterStatus}
             showChangeDetails={showChangeDetails}
             showChangeNote={showChangeNote}
             itemSortDirection={itemSortDirection}
