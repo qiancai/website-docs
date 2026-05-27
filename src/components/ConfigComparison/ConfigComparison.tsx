@@ -91,7 +91,7 @@ interface ReleaseEvent {
   content_type: ContentTypeId;
   component: string;
   item_key: string;
-  event_type: "modified" | "removed" | "deprecated";
+  event_type: "new" | "modified" | "removed" | "deprecated";
   change_type?: string | null;
   change_note?: string | null;
   replacement?: string | null;
@@ -401,7 +401,7 @@ function validateDataset(payload: unknown): Dataset {
       typeof event.version !== "string" ||
       typeof event.component !== "string" ||
       typeof event.item_key !== "string" ||
-      !["modified", "removed", "deprecated"].includes(
+      !["new", "modified", "removed", "deprecated"].includes(
         event.event_type as string
       )
     ) {
